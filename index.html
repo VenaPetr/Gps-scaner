@@ -3,40 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Scanner - Dual Debug</title>
+    <title>GPS Scanner - Adaptive Contrast</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: manipulation; }
-        
-        #viewer-container { 
-            position: relative; width: 100%; max-width: 400px; aspect-ratio: 1/1; 
-            border: 2px solid #ed2127; border-radius: 15px; overflow: hidden; background: #000;
-        }
-
+        #viewer-container { position: relative; width: 100%; max-width: 400px; aspect-ratio: 1/1; border: 2px solid #ed2127; border-radius: 15px; overflow: hidden; background: #000; }
         video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transform-origin: center; }
         #freeze-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; display: none; z-index: 5; background: black; }
-
-        .overlay {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 80%; height: 15%; border: 2px solid #00ff00; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); 
-            z-index: 10; pointer-events: none;
-        }
-
-        .zoom-box { width: 100%; max-width: 400px; margin: 15px 0; text-align: center; }
-        input[type=range] { width: 100%; accent-color: #ed2127; height: 25px; }
+        .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 15%; border: 2px solid #00ff00; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); z-index: 10; pointer-events: none; }
+        
+        .settings-box { width: 100%; max-width: 400px; margin: 10px 0; background: #222; padding: 10px; border-radius: 10px; box-sizing: border-box; }
+        label { font-size: 11px; color: #888; display: block; margin-bottom: 5px; }
+        input[type=range] { width: 100%; accent-color: #ed2127; margin-bottom: 10px; }
 
         .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 10px; }
         button { width: 100%; padding: 18px; font-size: 16px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; }
         #reset-btn { background: #444; display: none; }
 
-        /* Debug sekce */
         #debug-container { margin-top: 15px; width: 100%; max-width: 400px; display: none; gap: 10px; flex-direction: column; }
-        .debug-box { background: #222; border-radius: 10px; padding: 10px; border: 1px solid #444; }
-        .debug-box label { font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 5px; display: block; }
-        
-        canvas.preview { width: 100%; border-radius: 4px; background: #000; display: block; }
-        #debug-raw-canvas { border: 1px solid #4a90e2; } /* Modrý pro originál */
-        #debug-bin-canvas { border: 1px solid #00ff00; } /* Zelený pro OCR data */
+        .debug-box { background: #222; border-radius: 10px; padding: 8px; border: 1px solid #444; }
+        canvas.preview { width: 100%; border-radius: 4px; background: #000; }
+        #debug-raw-canvas { border: 1px solid #4a90e2; }
+        #debug-bin-canvas { border: 1px solid #00ff00; }
 
         #result { margin-top: 15px; padding: 15px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; }
         #output-text { font-size: 16px; color: #00ff00; margin: 10px 0; font-family: monospace; font-weight: bold; }
@@ -51,9 +39,12 @@
         <div class="overlay"></div>
     </div>
 
-    <div class="zoom-box">
-        <div>Zoom: <span id="zoom-val">1.5</span>x</div>
+    <div class="settings-box">
+        <label>Zoom: <span id="zoom-val">1.5</span>x</label>
         <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1.5">
+        
+        <label>Citlivost OCR (Práh): <span id="threshold-val">Auto</span></label>
+        <input type="range" id="threshold-slider" min="0" max="255" step="1" value="128">
     </div>
 
     <div class="controls">
@@ -62,18 +53,18 @@
         
         <div id="debug-container">
             <div class="debug-box">
-                <label>1. Originální výřez (Bez úprav):</label>
+                <label>1. Originál (Modrá):</label>
                 <canvas id="debug-raw-canvas" class="preview"></canvas>
             </div>
             <div class="debug-box">
-                <label>2. Po zpracování (Co vidí OCR):</label>
+                <label>2. Pro OCR (Zelená - musí být čitelný):</label>
                 <canvas id="debug-bin-canvas" class="preview"></canvas>
             </div>
         </div>
     </div>
 
     <div id="result">
-        <div id="status">Namiřte box na souřadnice</div>
+        <div id="status">Skenujte text v rámečku</div>
         <div id="output-text"></div>
         <div id="map-button-container"></div>
     </div>
@@ -94,11 +85,18 @@
         const mapBtnContainer = document.getElementById('map-button-container');
         const zoomSlider = document.getElementById('zoom-slider');
         const zoomVal = document.getElementById('zoom-val');
+        const thresholdSlider = document.getElementById('threshold-slider');
+        const thresholdVal = document.getElementById('threshold-val');
+
+        let autoThreshold = 128;
 
         zoomSlider.oninput = () => {
-            const z = zoomSlider.value;
-            video.style.transform = `scale(${z})`;
-            zoomVal.innerText = z;
+            video.style.transform = `scale(${zoomSlider.value})`;
+            zoomVal.innerText = zoomSlider.value;
+        };
+
+        thresholdSlider.oninput = () => {
+            thresholdVal.innerText = thresholdSlider.value;
         };
 
         async function initCamera() {
@@ -107,9 +105,7 @@
                     video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } 
                 });
                 video.srcObject = stream;
-            } catch (err) {
-                status.innerText = "Chyba kamery. Použijte HTTPS.";
-            }
+            } catch (err) { status.innerText = "Chyba kamery."; }
         }
 
         async function scanText() {
@@ -117,7 +113,7 @@
             const vw = video.videoWidth;
             const vh = video.videoHeight;
 
-            // 1. FREEZE
+            // FREEZE
             const fCtx = freezeLayer.getContext('2d');
             freezeLayer.width = video.clientWidth;
             freezeLayer.height = video.clientHeight;
@@ -128,9 +124,9 @@
             captureBtn.disabled = true;
             resetBtn.style.display = 'block';
             debugContainer.style.display = 'flex';
-            status.innerText = "⏳ Pracuji...";
+            status.innerText = "⏳ Analyzuji...";
 
-            // 2. CROP
+            // CROP
             const ctx = ocrCanvas.getContext('2d', {willReadFrequently: true});
             const sw = vw / z * 0.8;
             const sh = vh / z * 0.15;
@@ -141,36 +137,47 @@
             ocrCanvas.height = sh * 2;
             ctx.drawImage(video, sx, sy, sw, sh, 0, 0, ocrCanvas.width, ocrCanvas.height);
 
-            // ZOBRAZENÍ RAW NÁHLEDU (Modrý rámeček)
+            // RAW DEBUG
             debugRawCanvas.width = ocrCanvas.width;
             debugRawCanvas.height = ocrCanvas.height;
             debugRawCanvas.getContext('2d').drawImage(ocrCanvas, 0, 0);
 
-            // 3. BINARIZACE
+            // BINARIZACE S ADAPTIVNÍM PRAHEM
             let imgData = ctx.getImageData(0, 0, ocrCanvas.width, ocrCanvas.height);
             let d = imgData.data;
+            
+            // 1. Spočítat průměrný jas pro automatiku
+            let totalBrightness = 0;
+            for (let i = 0; i < d.length; i += 4) {
+                totalBrightness += (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11);
+            }
+            autoThreshold = totalBrightness / (d.length / 4);
+            
+            // Pokud uživatel nehýbal sliderem (je na středové hodnotě 128), použijeme automatiku
+            let finalThreshold = (thresholdSlider.value == 128) ? autoThreshold : thresholdSlider.value;
+            thresholdVal.innerText = Math.round(finalThreshold) + (thresholdSlider.value == 128 ? " (Auto)" : "");
+
+            // 2. Aplikovat práh
             for (let i = 0; i < d.length; i += 4) {
                 let gray = d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11;
-                let v = (gray > 120) ? 255 : 0; 
+                let v = (gray > finalThreshold) ? 255 : 0; 
                 d[i] = d[i+1] = d[i+2] = v;
             }
             ctx.putImageData(imgData, 0, 0);
 
-            // ZOBRAZENÍ BINÁRNÍHO NÁHLEDU (Zelený rámeček)
+            // BINARY DEBUG
             debugBinCanvas.width = ocrCanvas.width;
             debugBinCanvas.height = ocrCanvas.height;
             debugBinCanvas.getContext('2d').putImageData(imgData, 0, 0);
 
-            // 4. OCR
+            // OCR
             try {
                 const { data: { text } } = await Tesseract.recognize(ocrCanvas, 'eng', {
                     tessedit_char_whitelist: '0123456789., '
                 });
                 outputText.innerText = text.trim();
                 findCoordinates(text);
-            } catch (e) {
-                status.innerText = "Chyba OCR.";
-            }
+            } catch (e) { status.innerText = "Chyba OCR."; }
         }
 
         function findCoordinates(text) {
@@ -179,11 +186,9 @@
             if (matches && matches.length >= 2) {
                 const lat = matches[0].replace(/[,\s]/, '.');
                 const lon = matches[1].replace(/[,\s]/, '.');
-                status.innerText = "✅ HOTOVO";
+                status.innerText = "✅ NALEZENO";
                 mapBtnContainer.innerHTML = `<a href="https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=15&source=coor&id=${lon}%2C${lat}" target="_blank" class="map-link">OTEVŘÍT MAPY.CZ</a>`;
-            } else {
-                status.innerText = "❓ Souřadnice nenalezeny";
-            }
+            } else { status.innerText = "❓ Souřadnice nenalezeny"; }
         }
 
         resetBtn.onclick = () => {
@@ -192,7 +197,7 @@
             debugContainer.style.display = 'none';
             resetBtn.style.display = 'none';
             captureBtn.disabled = false;
-            status.innerText = "Namiřte box na souřadnice";
+            status.innerText = "Skenujte text v rámečku";
             mapBtnContainer.innerHTML = "";
             outputText.innerText = "";
         };
