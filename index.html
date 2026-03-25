@@ -2,27 +2,33 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Scanner - Fixed Version</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GPS Scanner Pro - Complete</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: none; }
-        #viewer-container { position: relative; width: 100%; max-width: 400px; aspect-ratio: 1/1; border: 2px solid #ed2127; border-radius: 15px; overflow: hidden; background: #000; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: none; overflow: hidden; }
+        #viewer-container { position: relative; width: 100%; max-width: 400px; aspect-ratio: 1/1; border: 2px solid #ed2127; border-radius: 15px; overflow: hidden; background: #000; touch-action: none; }
         video, #freeze-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
         #freeze-layer { object-fit: contain; display: none; z-index: 5; background: black; }
-        #crop-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; display: none; cursor: crosshair; }
+        #crop-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; display: none; cursor: crosshair; touch-action: none; }
         .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 15%; border: 2px solid #00ff00; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); z-index: 10; pointer-events: none; }
+        
         .settings-box { width: 100%; max-width: 400px; margin: 10px 0; background: #222; padding: 10px; border-radius: 10px; box-sizing: border-box; }
         label { font-size: 11px; color: #888; display: block; margin-bottom: 5px; }
         input[type=range] { width: 100%; accent-color: #ed2127; margin-bottom: 10px; }
-        .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 10px; }
-        button { width: 100%; padding: 18px; font-size: 16px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; }
-        #file-btn { background: #444; padding: 12px; font-size: 14px; }
+
+        .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; }
+        button { width: 100%; padding: 16px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; transition: 0.2s; }
+        button:active { opacity: 0.8; transform: scale(0.98); }
+        #file-btn { background: #444; padding: 12px; }
+        #ocr-selection-btn { background: #28a745; display: none; }
         #reset-btn { background: #555; display: none; }
-        #result { margin-top: 15px; padding: 15px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; }
-        #output-text { font-size: 16px; color: #00ff00; margin: 10px 0; font-family: monospace; font-weight: bold; }
-        .map-link { display: block; padding: 15px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; }
-        #history-list { width: 100%; max-width: 400px; margin-top: 10px; }
+
+        #result { margin-top: 15px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; }
+        #output-text { font-size: 16px; color: #00ff00; margin: 8px 0; font-family: monospace; font-weight: bold; min-height: 1.2em; }
+        .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; }
+        
+        #history-list { width: 100%; max-width: 400px; margin-top: 10px; max-height: 150px; overflow-y: auto; }
         .history-item { display: flex; justify-content: space-between; align-items: center; background: #222; margin-bottom: 5px; padding: 8px; border-radius: 8px; font-size: 13px; }
     </style>
 </head>
@@ -36,7 +42,7 @@
     </div>
 
     <div class="settings-box">
-        <label>Zoom: <span id="zoom-val">1.5</span>x</label>
+        <label>Zoom (Kamera): <span id="zoom-val">1.5</span>x</label>
         <input type="range" id="zoom-slider" min="1" max="8" step="0.1" value="1.5">
         <label>OCR Práh: <span id="threshold-val">Auto</span></label>
         <input type="range" id="threshold-slider" min="0" max="255" step="1" value="128">
@@ -46,11 +52,12 @@
         <button id="capture-btn">SKENOVAT NAŽIVO</button>
         <button id="file-btn">VYBRAT Z GALERIE</button>
         <input type="file" id="file-input" accept="image/*" style="display: none;">
-        <button id="reset-btn">ZRUŠIT / KAMERA</button>
+        <button id="ocr-selection-btn">SKENOVAT VÝBĚR</button>
+        <button id="reset-btn">ZRUŠIT / ZPĚT KE KAMERĚ</button>
     </div>
 
     <div id="result">
-        <div id="status">Skenujte text v rámečku</div>
+        <div id="status" style="font-size: 13px; color: #aaa;">Skenujte souřadnice v rámečku</div>
         <div id="output-text"></div>
         <div id="map-button-container"></div>
     </div>
@@ -61,203 +68,4 @@
     <canvas id="ocr-canvas" style="display:none;"></canvas>
 
     <script>
-        const video = document.getElementById('video');
-        const freezeLayer = document.getElementById('freeze-layer');
-        const cropCanvas = document.getElementById('crop-canvas');
-        const rawCropCanvas = document.getElementById('raw-crop-canvas');
-        const ocrCanvas = document.getElementById('ocr-canvas');
-        const fileInput = document.getElementById('file-input');
-        const captureBtn = document.getElementById('capture-btn');
-        const fileBtn = document.getElementById('file-btn');
-        const resetBtn = document.getElementById('reset-btn');
-        const status = document.getElementById('status');
-        const outputText = document.getElementById('output-text');
-        const mapBtnContainer = document.getElementById('map-button-container');
-        const zoomSlider = document.getElementById('zoom-slider');
-        const thresholdSlider = document.getElementById('threshold-slider');
-
-        let videoTrack = null;
-        let isFrozen = false;
-        let isGalleryMode = false;
-        let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
-        let sourceImg = null;
-        let startX, startY, isDrawing = false;
-        let selection = { x: 0, y: 0, w: 0, h: 0 };
-
-        async function initCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } });
-                video.srcObject = stream;
-                videoTrack = stream.getVideoTracks()[0];
-                renderHistory();
-            } catch (err) { status.innerText = "Chyba kamery: " + err; }
-        }
-
-        // --- SKENOVÁNÍ KAMEROU ---
-        async function scanLive() {
-            if (!video.videoWidth) return;
-            isFrozen = true;
-            isGalleryMode = false;
-            
-            const z = parseFloat(zoomSlider.value);
-            const vw = video.videoWidth;
-            const vh = video.videoHeight;
-
-            freezeLayer.width = 400; 
-            freezeLayer.height = 400;
-            freezeLayer.getContext('2d').drawImage(video, 0, 0, 400, 400);
-            freezeLayer.style.display = 'block';
-            video.style.visibility = 'hidden';
-            
-            // Příprava výřezu z kamery
-            const sw = (vw / z) * 0.8;
-            const sh = (vh / z) * 0.15;
-            const sx = (vw - sw) / 2;
-            const sy = (vh - sh) / 2;
-
-            rawCropCanvas.width = sw * 2;
-            rawCropCanvas.height = sh * 2;
-            rawCropCanvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, rawCropCanvas.width, rawCropCanvas.height);
-
-            captureBtn.disabled = true;
-            resetBtn.style.display = 'block';
-            processImageAndOCR();
-        }
-
-        // --- GALERIE ---
-        fileBtn.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const img = new Image();
-                img.onload = () => {
-                    sourceImg = img;
-                    isFrozen = true;
-                    isGalleryMode = true;
-                    video.style.visibility = 'hidden';
-                    document.getElementById('rect-overlay').style.display = 'none';
-                    
-                    freezeLayer.width = cropCanvas.width = 400;
-                    freezeLayer.height = cropCanvas.height = (img.height / img.width) * 400;
-                    freezeLayer.getContext('2d').drawImage(img, 0, 0, freezeLayer.width, freezeLayer.height);
-                    
-                    freezeLayer.style.display = 'block';
-                    cropCanvas.style.display = 'block';
-                    resetBtn.style.display = 'block';
-                    captureBtn.disabled = true;
-                    status.innerText = "Prstem vyberte oblast se souřadnicemi";
-                };
-                img.src = ev.target.result;
-            };
-            reader.readAsDataURL(file);
-        });
-
-        // --- KRESLENÍ OŘEZU ---
-        function getPos(e) {
-            const rect = cropCanvas.getBoundingClientRect();
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            return { x: clientX - rect.left, y: clientY - rect.top };
-        }
-
-        cropCanvas.addEventListener('mousedown', (e) => { if(!isGalleryMode) return; isDrawing = true; const p = getPos(e); startX = p.x; startY = p.y; });
-        cropCanvas.addEventListener('touchstart', (e) => { if(!isGalleryMode) return; isDrawing = true; const p = getPos(e); startX = p.x; startY = p.y; });
-
-        window.addEventListener('mousemove', (e) => {
-            if (!isDrawing) return;
-            const p = getPos(e);
-            selection = { x: Math.min(startX, p.x), y: Math.min(startY, p.y), w: Math.abs(p.x - startX), h: Math.abs(p.y - startY) };
-            const ctx = cropCanvas.getContext('2d');
-            ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
-            ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2;
-            ctx.strokeRect(selection.x, selection.y, selection.w, selection.h);
-        });
-
-        window.addEventListener('mouseup', () => {
-            if (!isDrawing) return;
-            isDrawing = false;
-            if (selection.w > 10) {
-                const scaleX = sourceImg.width / cropCanvas.width;
-                const scaleY = sourceImg.height / cropCanvas.height;
-                rawCropCanvas.width = selection.w * scaleX;
-                rawCropCanvas.height = selection.h * scaleY;
-                rawCropCanvas.getContext('2d').drawImage(sourceImg, selection.x * scaleX, selection.y * scaleY, selection.w * scaleX, selection.h * scaleY, 0, 0, rawCropCanvas.width, rawCropCanvas.height);
-                processImageAndOCR();
-            }
-        });
-        // Dotyková verze pro mobil
-        cropCanvas.addEventListener('touchmove', (e) => { if(isDrawing) { e.preventDefault(); const p = getPos(e); selection = { x: Math.min(startX, p.x), y: Math.min(startY, p.y), w: Math.abs(p.x - startX), h: Math.abs(p.y - startY) }; const ctx = cropCanvas.getContext('2d'); ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height); ctx.strokeStyle = '#00ff00'; ctx.strokeRect(selection.x, selection.y, selection.w, selection.h); } }, {passive: false});
-        cropCanvas.addEventListener('touchend', () => { if(isDrawing) { isDrawing = false; if(selection.w > 10) { const scaleX = sourceImg.width/cropCanvas.width; const scaleY = sourceImg.height/cropCanvas.height; rawCropCanvas.width = selection.w*scaleX; rawCropCanvas.height = selection.h*scaleY; rawCropCanvas.getContext('2d').drawImage(sourceImg, selection.x*scaleX, selection.y*scaleY, selection.w*scaleX, selection.h*scaleY, 0, 0, rawCropCanvas.width, rawCropCanvas.height); processImageAndOCR(); } } });
-
-        // --- SPOLEČNÉ OCR ---
-        async function processImageAndOCR() {
-            status.innerText = "⏳ Čtu...";
-            const ocrCtx = ocrCanvas.getContext('2d');
-            ocrCanvas.width = rawCropCanvas.width; ocrCanvas.height = rawCropCanvas.height;
-            let imgData = rawCropCanvas.getContext('2d').getImageData(0, 0, rawCropCanvas.width, rawCropCanvas.height);
-            let d = imgData.data;
-            let totalB = 0; for (let i = 0; i < d.length; i += 4) totalB += (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11);
-            let finalT = (thresholdSlider.value == 128) ? (totalB / (d.length / 4)) : thresholdSlider.value;
-            for (let i = 0; i < d.length; i += 4) { let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > finalT) ? 255 : 0; d[i] = d[i+1] = d[i+2] = v; }
-            ocrCtx.putImageData(imgData, 0, 0);
-            try {
-                const { data: { text } } = await Tesseract.recognize(ocrCanvas, 'eng', { tessedit_char_whitelist: '0123456789., ' });
-                outputText.innerText = text.trim();
-                findCoordinates(text);
-            } catch (e) { status.innerText = "Chyba OCR."; }
-        }
-
-        function findCoordinates(text) {
-            const regex = /([0-9]{2}[.,\s][0-9]{3,})/g;
-            const matches = text.match(regex);
-            if (matches && matches.length >= 2) {
-                const lat = matches[0].replace(/[,\s]/, '.');
-                const lon = matches[1].replace(/[,\s]/, '.');
-                status.innerText = "✅ NALEZENO";
-                mapBtnContainer.innerHTML = `<a href="https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=15&source=coor&id=${lon}%2C${lat}" target="_blank" class="map-link">OTEVŘÍT MAPY.CZ</a>`;
-                addToHistory(lat, lon);
-            } else { status.innerText = "❓ Nenalezeno. Zkuste jiný výřez/práh."; }
-        }
-
-        function addToHistory(lat, lon) {
-            history = history.filter(item => !(item.lat === lat && item.lon === lon));
-            history.unshift({ lat, lon }); if (history.length > 3) history.pop();
-            localStorage.setItem('gps_history', JSON.stringify(history));
-            renderHistory();
-        }
-
-        function renderHistory() {
-            const list = document.getElementById('history-list');
-            list.innerHTML = history.length ? '<label style="font-size:10px; color:#555">HISTORIE</label>' : '';
-            history.forEach(item => {
-                const d = document.createElement('div'); d.className = 'history-item';
-                d.innerHTML = `<span>${item.lat}, ${item.lon}</span> <a href="https://mapy.cz/zakladni?x=${item.lon}&y=${item.lat}&z=15&source=coor&id=${item.lon}%2C${item.lat}" target="_blank" style="color:#4a90e2; text-decoration:none; font-weight:bold">MAPA</a>`;
-                list.appendChild(d);
-            });
-        }
-
-        captureBtn.addEventListener('click', scanLive);
-        resetBtn.addEventListener('click', () => {
-            isFrozen = false; isGalleryMode = false; sourceImg = null;
-            freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
-            video.style.visibility = 'visible';
-            document.getElementById('rect-overlay').style.display = 'block';
-            resetBtn.style.display = 'none';
-            captureBtn.disabled = false;
-            status.innerText = "Skenujte text v rámečku";
-            mapBtnContainer.innerHTML = ""; outputText.innerText = "";
-            fileInput.value = "";
-        });
-
-        zoomSlider.oninput = async () => {
-            const val = zoomSlider.value; document.getElementById('zoom-val').innerText = val;
-            video.style.transform = `scale(${val})`;
-            if (videoTrack && videoTrack.getCapabilities().zoom) { try { await videoTrack.applyConstraints({ advanced: [{ zoom: val }] }); } catch (e) {} }
-        };
-
-        window.onload = initCamera;
-    </script>
-</body>
-</html>
+        const video = document.getElementById('video
