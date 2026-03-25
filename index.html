@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Location Finder</title>
+    <title>GPS Location Finder v1.0.8</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
@@ -39,13 +39,18 @@
         .history-item { display: flex; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; gap: 10px; }
         .history-info { flex-grow: 1; display: flex; flex-direction: column; }
         .delete-btn { color: #ed2127; cursor: pointer; font-size: 18px; padding: 2px 5px; }
+
+        #route-section { width: 100%; max-width: 400px; margin-top: 15px; }
+        #route-btn { background: #4a90e2; display: none; width: 100%; }
+        #url-debug { margin-top: 8px; padding: 8px; background: #000; color: #aaa; font-size: 9px; border-radius: 5px; border: 1px solid #333; word-break: break-all; display: none; font-family: monospace; }
+        input[type="checkbox"] { transform: scale(1.3); accent-color: #28a745; }
     </style>
 </head>
 <body>
 
     <div class="app-header">
         <div class="app-title">GPS Location Finder</div>
-        <div class="app-version">v1.0.5-stable</div>
+        <div class="app-version">v1.0.8</div>
     </div>
 
     <div id="viewer-container">
@@ -83,6 +88,11 @@
 
     <div id="history-list"></div>
 
+    <div id="route-section">
+        <button id="route-btn" onclick="generateRoute()">VYGENEROVAT TRASU (RC)</button>
+        <div id="url-debug"></div>
+    </div>
+
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
 
     <script>
@@ -90,6 +100,7 @@
         const rawCropCanvas = document.getElementById('raw-crop-canvas'), ocrCanvas = document.getElementById('ocr-canvas'), debugBox = document.getElementById('debug-box');
         const fileInput = document.getElementById('file-input'), captureBtn = document.getElementById('capture-btn'), fileBtn = document.getElementById('file-btn'), resetBtn = document.getElementById('reset-btn'), ocrSelectionBtn = document.getElementById('ocr-selection-btn');
         const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text'), mapBtnContainer = document.getElementById('map-button-container');
+        const routeBtn = document.getElementById('route-btn'), urlDebug = document.getElementById('url-debug');
 
         let videoTrack = null, isFrozen = false, isGalleryMode = false, isDrawing = false, sourceImg = null, startX, startY, selection = { x: 0, y: 0, w: 0, h: 0 };
         let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
@@ -236,10 +247,16 @@
 
         function saveToHistory(lat, lon) {
             history = history.filter(h => h.lat !== lat); 
-            history.unshift({ lat, lon }); 
+            history.unshift({ lat, lon, selected: true }); 
             if (history.length > 20) history.pop();
             localStorage.setItem('gps_history', JSON.stringify(history)); 
             renderHistory();
+        }
+
+        function toggleHistorySelect(index) {
+            history[index].selected = !history[index].selected;
+            localStorage.setItem('gps_history', JSON.stringify(history));
+            updateDebugUrl();
         }
 
         function deleteHistoryItem(index) {
@@ -250,19 +267,46 @@
 
         function renderHistory() {
             const list = document.getElementById('history-list');
-            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">POSLEDNÍ SKENY:</div>' : '';
+            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">HISTORIE (ZAŠKRTNĚTE BODY PRO TRASU):</div>' : '';
             history.forEach((h, index) => {
                 const item = document.createElement('div'); item.className = 'history-item';
                 const mapUrl = `https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=16&source=coor&id=${h.lon}%2C${h.lat}`;
                 item.innerHTML = `
+                    <input type="checkbox" ${h.selected ? 'checked' : ''} onchange="toggleHistorySelect(${index})">
                     <div class="history-info">
                         <span style="font-weight:bold; color:#00ff00">${h.lat}, ${h.lon}</span>
                     </div>
-                    <a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-size:10px">MAPA</a>
+                    <a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-size:10px">BOD</a>
                     <span class="delete-btn" onclick="deleteHistoryItem(${index})">🗑</span>
                 `;
                 list.appendChild(item);
             });
+            routeBtn.style.display = history.length > 1 ? 'block' : 'none';
+            updateDebugUrl();
+        }
+
+        function updateDebugUrl() {
+            const selected = history.filter(h => h.selected);
+            if (selected.length < 2) {
+                urlDebug.style.display = 'none';
+                return;
+            }
+            const chronological = [...selected].reverse();
+            let rcStr = "";
+            chronological.forEach((p, i) => {
+                rcStr += `${p.lon}_${p.lat}`;
+                if (i < chronological.length - 1) rcStr += "_";
+            });
+            const finalUrl = `https://mapy.cz/zakladni?planovani-trasy&rc=${rcStr}&p=1`;
+            urlDebug.innerText = "DEBUG URL: " + finalUrl;
+            urlDebug.style.display = 'block';
+            return finalUrl;
+        }
+
+        function generateRoute() {
+            const url = updateDebugUrl();
+            if (url) window.open(url, '_blank');
+            else alert("Vyberte alespoň 2 body v historii!");
         }
 
         resetBtn.onclick = () => {
