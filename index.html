@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Scanner Pro v1.0.8</title>
+    <title>GPS Scanner Pro v1.0.5</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
@@ -38,18 +38,16 @@
         #history-list { width: 100%; max-width: 400px; margin-top: 10px; }
         .history-item { display: flex; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; gap: 10px; }
         .history-info { flex-grow: 1; display: flex; flex-direction: column; }
-        .history-controls { display: flex; align-items: center; gap: 12px; }
         .delete-btn { color: #ed2127; cursor: pointer; font-size: 18px; padding: 2px 5px; }
         
-        #route-btn { background: #4a90e2; margin-top: 15px; display: none; border: 2px solid #fff; }
-        input[type="checkbox"] { transform: scale(1.3); accent-color: #28a745; cursor: pointer; }
+        #route-btn { background: #4a90e2; margin-top: 15px; display: none; }
     </style>
 </head>
 <body>
 
     <div class="app-header">
         <div class="app-title">GPS Scanner Pro</div>
-        <div class="app-version">v1.0.8</div>
+        <div class="app-version">v1.0.5</div>
     </div>
 
     <div id="viewer-container">
@@ -86,7 +84,7 @@
     </div>
 
     <div id="history-list"></div>
-    <button id="route-btn" onclick="generateRoute()">VYGENEROVAT TRASU V APLIKACI</button>
+    <button id="route-btn" onclick="generateRoute()">OTEVŘÍT TRASU (BETA)</button>
 
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
 
@@ -241,15 +239,10 @@
 
         function saveToHistory(lat, lon) {
             history = history.filter(h => h.lat !== lat); 
-            history.unshift({ lat, lon, selected: true }); 
+            history.unshift({ lat, lon }); 
             if (history.length > 20) history.pop();
             localStorage.setItem('gps_history', JSON.stringify(history)); 
             renderHistory();
-        }
-
-        function toggleSelection(index) {
-            history[index].selected = !history[index].selected;
-            localStorage.setItem('gps_history', JSON.stringify(history));
         }
 
         function deleteHistoryItem(index) {
@@ -260,45 +253,27 @@
 
         function renderHistory() {
             const list = document.getElementById('history-list');
-            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">HISTORIE (ZAŠKRTNĚTE PRO TRASU):</div>' : '';
+            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">POSLEDNÍ SKENY:</div>' : '';
             history.forEach((h, index) => {
                 const item = document.createElement('div'); item.className = 'history-item';
                 const mapUrl = `https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=16&source=coor&id=${h.lon}%2C${h.lat}`;
                 item.innerHTML = `
-                    <input type="checkbox" ${h.selected ? 'checked' : ''} onchange="toggleSelection(${index})">
                     <div class="history-info">
                         <span style="font-weight:bold; color:#00ff00">${h.lat}, ${h.lon}</span>
                     </div>
-                    <div class="history-controls">
-                        <a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-size:10px">BOD</a>
-                        <span class="delete-btn" onclick="deleteHistoryItem(${index})">🗑</span>
-                    </div>
+                    <a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-size:10px">MAPA</a>
+                    <span class="delete-btn" onclick="deleteHistoryItem(${index})">🗑</span>
                 `;
                 list.appendChild(item);
             });
-            routeBtn.style.display = history.length > 0 ? 'block' : 'none';
+            routeBtn.style.display = history.length > 1 ? 'block' : 'none';
         }
 
-        // --- OPRAVENÁ FUNKCE v1.0.8 (RC PARAMETR) ---
         function generateRoute() {
-            const selectedPoints = history.filter(h => h.selected);
-            if (selectedPoints.length < 2) {
-                alert("Vyberte alespoň dva body pro trasu!");
-                return;
-            }
-            
-            const chronologicalPoints = [...selectedPoints].reverse();
-
-            // Skládáme řetězec Lon1_Lat1_Lon2_Lat2...
-            let rcParam = "";
-            chronologicalPoints.forEach((p, i) => {
-                rcParam += `${p.lon}_${p.lat}`;
-                if (i < chronologicalPoints.length - 1) rcParam += "_";
-            });
-
-            // Nejsilnější odkaz pro mobilní aplikaci
-            const routeUrl = `https://mapy.cz/zakladni?planovani-trasy&rc=${rcParam}&p=1`;
-            
+            if (history.length < 2) return;
+            const p1 = history[history.length - 1]; // První naskenovaný
+            const p2 = history[0]; // Poslední naskenovaný
+            const routeUrl = `https://mapy.cz/zakladni?x=${p2.lon}&y=${p2.lat}&z=11&source=coor&id=${p1.lon}%2C${p1.lat}&source=coor&id=${p2.lon}%2C${p2.lat}`;
             window.open(routeUrl, '_blank');
         }
 
