@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Scanner Pro v1.0.5</title>
+    <title>GPS Scanner Pro v1.0.6</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
@@ -35,14 +35,12 @@
         
         .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
         
-        /* Historie */
         #history-list { width: 100%; max-width: 400px; margin-top: 10px; }
         .history-item { display: flex; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; gap: 10px; }
         .history-info { flex-grow: 1; display: flex; flex-direction: column; }
         .history-controls { display: flex; align-items: center; gap: 12px; }
         .delete-btn { color: #ed2127; cursor: pointer; font-size: 18px; padding: 2px 5px; }
         
-        /* Trasa tlačítko */
         #route-btn { background: #4a90e2; margin-top: 15px; display: none; }
         input[type="checkbox"] { transform: scale(1.3); accent-color: #28a745; cursor: pointer; }
     </style>
@@ -51,7 +49,7 @@
 
     <div class="app-header">
         <div class="app-title">GPS Scanner Pro</div>
-        <div class="app-version">v1.0.5</div>
+        <div class="app-version">v1.0.6</div>
     </div>
 
     <div id="viewer-container">
@@ -245,7 +243,7 @@
         // --- HISTORIE & TRASA ---
         function saveToHistory(lat, lon) {
             history = history.filter(h => h.lat !== lat); 
-            history.unshift({ lat, lon, selected: true }); // Automaticky zaškrtnuto
+            history.unshift({ lat, lon, selected: true }); 
             if (history.length > 20) history.pop();
             localStorage.setItem('gps_history', JSON.stringify(history)); 
             renderHistory();
@@ -284,25 +282,30 @@
             routeBtn.style.display = history.length > 0 ? 'block' : 'none';
         }
 
+        // --- OPRAVENÁ FUNKCE PRO GENEROVÁNÍ TRASY ---
         function generateRoute() {
             const selectedPoints = history.filter(h => h.selected);
-            if (selectedPoints.length < 1) {
-                alert("Vyberte alespoň jeden bod v historii!");
+            if (selectedPoints.length < 2) {
+                alert("Vyberte alespoň dva body pro trasu!");
                 return;
             }
             
-            // Mapy.cz formát: vlastni-body?x=LON&y=LAT&ut=Název...
-            // Pro trasu použijeme sekvenci bodů: vlastni-body?x=LON1&y=LAT1&x=LON2&y=LAT2...
-            let pointsParam = "";
-            selectedPoints.forEach((p, i) => {
-                pointsParam += `&x=${p.lon}&y=${p.lat}&ut=Bod%20${i+1}`;
+            // Pro trasu musíme body obrátit, aby šly v pořadí, jak byly skenovány (od nejstaršího po nejnovější)
+            const chronologicalPoints = [...selectedPoints].reverse();
+
+            // Konstrukce URL pro Mapy.cz vlastni-body
+            // Klíčem je parametr 'vlastni-body' následovaný sérií x a y
+            let baseUrl = "https://mapy.cz/zakladni?vlastni-body";
+            let params = "";
+            
+            chronologicalPoints.forEach((p, i) => {
+                params += `&x=${p.lon}&y=${p.lat}&ut=Bod%20${i+1}`;
             });
 
-            const routeUrl = `https://mapy.cz/turisticka?vlastni-body${pointsParam}`;
-            window.open(routeUrl, '_blank');
+            // Otevření okna s kompletním URL
+            window.open(baseUrl + params, '_blank');
         }
 
-        // --- OSTATNÍ OVLÁDÁNÍ ---
         resetBtn.onclick = () => {
             isFrozen = false; isGalleryMode = false; sourceImg = null;
             video.style.display = 'block'; freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
