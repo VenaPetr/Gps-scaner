@@ -3,31 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Scanner Pro - Final Fix</title>
+    <title>GPS Scanner Pro v1.0.4</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
+        
+        /* Nová hlavička nad rámečkem */
+        .app-header { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 5px; padding: 0 5px; }
+        .app-title { font-size: 12px; font-weight: bold; color: #ed2127; text-transform: uppercase; letter-spacing: 1px; }
+        .app-version { font-size: 10px; color: #666; }
+
         #viewer-container { position: relative; width: 100%; max-width: 400px; border: 2px solid #ed2127; border-radius: 15px; overflow: hidden; background: #000; }
         video, #freeze-layer { width: 100%; display: block; object-fit: cover; aspect-ratio: 1/1; }
         #freeze-layer { display: none; object-fit: fill; }
         #crop-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; display: none; touch-action: none; }
         .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 15%; border: 2px solid #00ff00; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); z-index: 10; pointer-events: none; }
+        
         .settings-box { width: 100%; max-width: 400px; margin: 10px 0; background: #222; padding: 10px; border-radius: 10px; box-sizing: border-box; }
         label { font-size: 11px; color: #888; display: block; margin-bottom: 5px; }
         input[type=range] { width: 100%; accent-color: #ed2127; margin-bottom: 10px; }
+        
         .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; }
         button { width: 100%; padding: 16px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; }
         #ocr-selection-btn { background: #28a745; display: none; }
         #reset-btn { background: #555; display: none; }
-        #result { margin-top: 15px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; }
-        #output-text { font-size: 15px; color: #00ff00; margin: 8px 0; font-family: monospace; word-break: break-all; background: #000; padding: 5px; }
-        .debug-container { margin-top: 10px; padding: 10px; background: #000; border: 1px dashed #444; border-radius: 8px; display: none; }
+        
+        /* Debug div hned pod tlačítky */
+        .debug-container { margin-top: 10px; padding: 10px; background: #000; border: 1px dashed #444; border-radius: 8px; width: 100%; max-width: 400px; box-sizing: border-box; display: none; }
         #ocr-canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid #00ff00; }
+
+        #result { margin-top: 10px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; box-sizing: border-box; }
+        #output-text { font-size: 15px; color: #00ff00; margin: 8px 0; font-family: monospace; word-break: break-all; background: #000; padding: 5px; min-height: 20px; }
+        
         .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
-        .history-item { display: flex; justify-content: space-between; align-items: center; background: #222; margin-top: 5px; padding: 8px; border-radius: 8px; font-size: 11px; width: 100%; box-sizing: border-box; }
+        
+        /* Historie s košem */
+        .history-item { display: flex; justify-content: space-between; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; width: 100%; box-sizing: border-box; }
+        .history-controls { display: flex; align-items: center; gap: 15px; }
+        .delete-btn { color: #ed2127; cursor: pointer; font-size: 16px; padding: 5px; user-select: none; }
     </style>
 </head>
 <body>
+
+    <div class="app-header">
+        <div class="app-title">GPS Scanner Pro</div>
+        <div class="app-version">v1.0.4</div>
+    </div>
 
     <div id="viewer-container">
         <video id="video" autoplay playsinline></video>
@@ -37,9 +58,9 @@
     </div>
 
     <div class="settings-box">
-        <label>Zoom (Kamera): <span id="zoom-val">1.5</span>x</label>
+        <label>Zoom: <span id="zoom-val">1.5</span>x</label>
         <input type="range" id="zoom-slider" min="1" max="8" step="0.1" value="1.5">
-        <label>OCR Citlivost: <span id="threshold-val">Auto</span></label>
+        <label>Threshold: <span id="threshold-val">Auto</span></label>
         <input type="range" id="threshold-slider" min="0" max="255" step="1" value="128">
     </div>
 
@@ -51,12 +72,14 @@
         <button id="reset-btn">ZPĚT KE KAMERĚ</button>
     </div>
 
+    <div id="debug-box" class="debug-container">
+        <label style="color: #00ff00; font-size: 9px; margin-bottom: 3px; display: block;">BINÁRNÍ VÝŘEZ:</label>
+        <canvas id="ocr-canvas"></canvas>
+    </div>
+
     <div id="result">
-        <div id="status">PŘIPRAVENO</div>
+        <div id="status" style="font-size: 12px; color: #888;">PŘIPRAVENO</div>
         <div id="output-text">---</div>
-        <div id="debug-box" class="debug-container">
-            <canvas id="ocr-canvas"></canvas>
-        </div>
         <div id="map-button-container"></div>
     </div>
 
@@ -167,9 +190,7 @@
             for (let i = 0; i < d.length; i += 4) { let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > thresh) ? 255 : 0; d[i] = d[i+1] = d[i+2] = v; }
             ocrCtx.putImageData(imgData, 0, 0);
             try {
-                const result = await Tesseract.recognize(ocrCanvas, 'eng', { 
-                    tessedit_char_whitelist: '0123456789.,°\'"NSEWnsewVZvz ' 
-                });
+                const result = await Tesseract.recognize(ocrCanvas, 'eng', { tessedit_char_whitelist: '0123456789.,°\'"NSEWnsewVZvz ' });
                 const text = result.data.text.trim();
                 outputText.innerText = text || "Nenalezen text";
                 parseCoordinates(text);
@@ -179,59 +200,36 @@
         function parseCoordinates(text) {
             const coordRegex = /([NSNSEWnsewVZvz]?\s*\d{1,3}[°\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[NSNSEWnsewVZvz]?)/gi;
             const matches = text.match(coordRegex);
-
-            let finalLat = null;
-            let finalLon = null;
-
+            let fLat = null, fLon = null;
             if (matches && matches.length >= 2) {
-                const c1 = convertToDecimal(matches[0]);
-                const c2 = convertToDecimal(matches[1]);
-
-                // CHYTRÉ ROZPOZNÁNÍ: Pokud c1 je Longitude nebo c2 je Latitude, prohodíme je.
-                if (c1.type === 'lon' || c2.type === 'lat') {
-                    finalLat = c2.val;
-                    finalLon = c1.val;
-                } else {
-                    finalLat = c1.val;
-                    finalLon = c2.val;
-                }
+                const c1 = convertToDecimal(matches[0]), c2 = convertToDecimal(matches[1]);
+                if (c1.type === 'lon' || c2.type === 'lat') { fLat = c2.val; fLon = c1.val; } 
+                else { fLat = c1.val; fLon = c2.val; }
             } else {
-                // Fallback pro čistě číselné zápisy (předpokládáme pořadí Lat, Lon)
                 const simpleRegex = /([0-9]{2,3}[.,][0-9]{3,})/g;
                 const simpleMatches = text.match(simpleRegex);
-                if (simpleMatches && simpleMatches.length >= 2) {
-                    finalLat = simpleMatches[0].replace(',', '.');
-                    finalLon = simpleMatches[1].replace(',', '.');
-                }
+                if (simpleMatches && simpleMatches.length >= 2) { fLat = simpleMatches[0].replace(',', '.'); fLon = simpleMatches[1].replace(',', '.'); }
             }
-
-            if (finalLat && finalLon) {
-                displayResult(finalLat, finalLon, "✅ SOUŘADNICE ZPRACOVÁNY");
-            } else {
-                statusDisp.innerText = "❓ NEROZPOZNÁNO";
-            }
+            if (fLat && fLon) displayResult(fLat, fLon, "✅ SOUŘADNICE ZPRACOVÁNY");
+            else statusDisp.innerText = "❓ NEROZPOZNÁNO";
         }
 
         function convertToDecimal(coordStr) {
             const nums = coordStr.match(/(\d+(\.\d+)?)/g);
             if (!nums) return { val: null, type: 'unknown' };
-            
             let decimal = 0;
             if (nums.length === 1) decimal = parseFloat(nums[0]);
             else if (nums.length === 2) decimal = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60);
             else if (nums.length >= 3) decimal = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60) + (parseFloat(nums[2]) / 3600);
-            
             let type = 'unknown';
             if (/[NSns]/.test(coordStr)) type = 'lat';
             if (/[EWewVZvz]/.test(coordStr)) type = 'lon';
-
             if (/[SWswZz]/.test(coordStr)) decimal = -decimal;
             return { val: decimal.toFixed(6), type: type };
         }
 
         function displayResult(lat, lon, msg) {
             statusDisp.innerText = msg;
-            // FIX URL: x = Longitude (délka), y = Latitude (šířka)
             const mapUrl = `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}`;
             mapBtnContainer.innerHTML = `<a href="${mapUrl}" target="_blank" class="map-link">OTEVŘÍT V MAPY.CZ</a>`;
             saveToHistory(lat, lon);
@@ -240,18 +238,31 @@
         function saveToHistory(lat, lon) {
             history = history.filter(h => h.lat !== lat); 
             history.unshift({ lat, lon });
-            if (history.length > 5) history.pop();
+            if (history.length > 10) history.pop();
             localStorage.setItem('gps_history', JSON.stringify(history)); 
+            renderHistory();
+        }
+
+        // --- NOVÁ FUNKCE MAZÁNÍ ---
+        function deleteHistoryItem(index) {
+            history.splice(index, 1);
+            localStorage.setItem('gps_history', JSON.stringify(history));
             renderHistory();
         }
 
         function renderHistory() {
             const list = document.getElementById('history-list');
             list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">POSLEDNÍ NÁLEZY:</div>' : '';
-            history.forEach(h => {
+            history.forEach((h, index) => {
                 const item = document.createElement('div'); item.className = 'history-item';
                 const mapUrl = `https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=16&source=coor&id=${h.lon}%2C${h.lat}`;
-                item.innerHTML = `<span>Lat: ${h.lat}, Lon: ${h.lon}</span><a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-weight:bold">MAPA</a>`;
+                item.innerHTML = `
+                    <span>Lat: ${h.lat}, Lon: ${h.lon}</span>
+                    <div class="history-controls">
+                        <a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-weight:bold">MAPA</a>
+                        <span class="delete-btn" onclick="deleteHistoryItem(${index})">🗑</span>
+                    </div>
+                `;
                 list.appendChild(item);
             });
         }
