@@ -3,48 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Scanner - Freeze & Crop</title>
+    <title>GPS Scanner - Precision Crop</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: manipulation; }
         
         #viewer-container { 
             position: relative; width: 100%; max-width: 400px; aspect-ratio: 1/1; 
             border: 2px solid #ed2127; border-radius: 15px; overflow: hidden; background: #000;
         }
 
-        video, #freeze-layer { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; 
+        video { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;
+            transform-origin: center;
         }
 
-        #freeze-layer { display: none; z-index: 5; }
+        #freeze-layer { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            object-fit: contain; display: none; z-index: 5; background: black;
+        }
 
+        /* Bílý zaměřovací box */
         .overlay {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 80%; height: 20%; border: 2px solid #fff; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); 
+            width: 80%; height: 15%; border: 2px solid #fff; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); 
             z-index: 10; pointer-events: none;
         }
 
         .controls { margin-top: 15px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 10px; }
         
         button { 
-            width: 100%; padding: 15px; font-size: 16px; cursor: pointer; border: none; 
+            width: 100%; padding: 18px; font-size: 16px; cursor: pointer; border: none; 
             border-radius: 10px; background: #ed2127; color: white; font-weight: bold; 
         }
         
         #reset-btn { background: #444; display: none; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        button:disabled { opacity: 0.5; }
 
         #result { 
             margin-top: 15px; padding: 15px; background: #222; border-radius: 10px; 
             width: 100%; max-width: 400px; text-align: center; box-sizing: border-box;
         }
 
-        #output-text { font-size: 12px; color: #888; margin: 5px 0; font-family: monospace; }
-        .map-link { display: block; padding: 12px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
+        #output-text { font-size: 14px; color: #00ff00; margin: 10px 0; font-family: monospace; min-height: 1.2em; }
+        .map-link { display: block; padding: 15px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; }
         
-        .zoom-box { width: 100%; margin: 10px 0; }
-        input[type=range] { width: 100%; accent-color: #ed2127; }
+        .zoom-box { width: 100%; max-width: 400px; margin: 15px 0; text-align: center; }
+        input[type=range] { width: 100%; accent-color: #ed2127; height: 25px; }
+
+        /* Náhled toho, co OCR skutečně vidí (pro ladění) */
+        #debug-canvas { width: 100%; margin-top: 10px; border: 1px solid #555; display: none; }
     </style>
 </head>
 <body>
@@ -52,22 +60,24 @@
     <div id="viewer-container">
         <video id="video" autoplay playsinline></video>
         <canvas id="freeze-layer"></canvas>
-        <div class="overlay" id="target-box"></div>
+        <div class="overlay"></div>
     </div>
 
     <div class="zoom-box">
-        <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1.5">
+        <div>Zoom: <span id="zoom-val">1.5</span>x</div>
+        <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1.5">
     </div>
 
     <div class="controls">
-        <button id="capture-btn">SKENOVAT TEXT</button>
-        <button id="reset-btn">ZPĚT NA KAMERU</button>
+        <button id="capture-btn">SKENOVAT VÝŘEZ</button>
+        <button id="reset-btn">ZRUŠIT A ZNOVU</button>
     </div>
 
     <div id="result">
-        <div id="status">Namiřte rámeček na text</div>
+        <div id="status">Namiřte box na souřadnice</div>
         <div id="output-text"></div>
         <div id="map-button-container"></div>
+        <canvas id="debug-canvas"></canvas>
     </div>
 
     <canvas id="ocr-canvas" style="display:none;"></canvas>
@@ -76,68 +86,89 @@
         const video = document.getElementById('video');
         const freezeLayer = document.getElementById('freeze-layer');
         const ocrCanvas = document.getElementById('ocr-canvas');
+        const debugCanvas = document.getElementById('debug-canvas');
         const captureBtn = document.getElementById('capture-btn');
         const resetBtn = document.getElementById('reset-btn');
         const status = document.getElementById('status');
         const outputText = document.getElementById('output-text');
         const mapBtnContainer = document.getElementById('map-button-container');
         const zoomSlider = document.getElementById('zoom-slider');
+        const zoomVal = document.getElementById('zoom-val');
 
-        zoomSlider.oninput = () => video.style.transform = `scale(${zoomSlider.value})`;
+        // Aktualizace zoomu v reálném čase
+        zoomSlider.oninput = () => {
+            const z = zoomSlider.value;
+            video.style.transform = `scale(${z})`;
+            zoomVal.innerText = z;
+        };
 
         async function initCamera() {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: 1280 } });
-            video.srcObject = stream;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                status.innerText = "Chyba kamery. Použijte HTTPS.";
+            }
         }
 
         async function scanText() {
-            const zoom = zoomSlider.value;
-            const vWidth = video.videoWidth;
-            const vHeight = video.videoHeight;
+            const z = parseFloat(zoomSlider.value);
+            const vw = video.videoWidth;
+            const vh = video.videoHeight;
 
-            // 1. FREEZE: Zachytíme aktuální pohled na viditelný canvas
+            // 1. ZMRAZENÍ OBRAZU (pro uživatele)
+            const fCtx = freezeLayer.getContext('2d');
             freezeLayer.width = video.clientWidth;
             freezeLayer.height = video.clientHeight;
-            freezeLayer.getContext('2d').drawImage(video, 0, 0, freezeLayer.width, freezeLayer.height);
+            fCtx.drawImage(video, 0, 0, freezeLayer.width, freezeLayer.height);
             freezeLayer.style.display = 'block';
-            video.style.opacity = '0';
+            video.style.visibility = 'hidden';
             
             captureBtn.disabled = true;
             resetBtn.style.display = 'block';
             status.innerText = "⏳ Analyzuji výřez...";
 
-            // 2. CROP & PREPROCESS: Vyřízneme jen vnitřek rámečku (overlay)
+            // 2. PŘESNÝ VÝŘEZ (Crop)
             const ctx = ocrCanvas.getContext('2d', {willReadFrequently: true});
             
-            // Definice výřezu (80% šířka, 20% výška uprostřed)
-            const cropW = vWidth / zoom * 0.8;
-            const cropH = vHeight / zoom * 0.2;
-            const cropX = (vWidth - cropW) / 2;
-            const cropY = (vHeight - cropH) / 2;
+            // Výpočet oblasti, která je vidět v overlay boxu (80% šířka, 15% výška)
+            const sw = vw / z * 0.8;
+            const sh = vh / z * 0.15;
+            const sx = (vw - sw) / 2;
+            const sy = (vh - sh) / 2;
 
-            ocrCanvas.width = cropW * 2; // Zvětšíme pro lepší detaily
-            ocrCanvas.height = cropH * 2;
-            ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, ocrCanvas.width, ocrCanvas.height);
+            ocrCanvas.width = sw * 1.5; // Mírné zvětšení pro lepší OCR
+            ocrCanvas.height = sh * 1.5;
+            ctx.drawImage(video, sx, sy, sw, sh, 0, 0, ocrCanvas.width, ocrCanvas.height);
 
-            // 3. BINARIZACE: Černobílý filtr pro vysoký kontrast
+            // 3. AUTOMATICKÝ KONTRAST (Binarizace)
             let imgData = ctx.getImageData(0, 0, ocrCanvas.width, ocrCanvas.height);
             let d = imgData.data;
             for (let i = 0; i < d.length; i += 4) {
                 let gray = d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11;
-                let v = (gray > 120) ? 255 : 0; // Práh 120 (lze ladit)
+                let v = (gray > 125) ? 255 : 0; // Fixní práh pro čistý text
                 d[i] = d[i+1] = d[i+2] = v;
             }
             ctx.putImageData(imgData, 0, 0);
 
-            // 4. OCR
+            // Zobrazíme debug náhled (co OCR skutečně čte)
+            debugCanvas.style.display = "block";
+            debugCanvas.width = ocrCanvas.width;
+            debugCanvas.height = ocrCanvas.height;
+            debugCanvas.getContext('2d').putImageData(imgData, 0, 0);
+
+            // 4. OCR PROCES
             try {
                 const { data: { text } } = await Tesseract.recognize(ocrCanvas, 'eng', {
                     tessedit_char_whitelist: '0123456789., '
                 });
-                outputText.innerText = text.trim();
-                findCoordinates(text);
+                const cleanText = text.trim();
+                outputText.innerText = cleanText ? `Text: ${cleanText}` : "Žádný text";
+                findCoordinates(cleanText);
             } catch (e) {
-                status.innerText = "Chyba při čtení.";
+                status.innerText = "Chyba OCR.";
             }
         }
 
@@ -147,19 +178,20 @@
             if (matches && matches.length >= 2) {
                 const lat = matches[0].replace(/[,\s]/, '.');
                 const lon = matches[1].replace(/[,\s]/, '.');
-                status.innerText = "✅ Nalezeno!";
+                status.innerText = "✅ SOUŘADNICE OK";
                 mapBtnContainer.innerHTML = `<a href="https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=15&source=coor&id=${lon}%2C${lat}" target="_blank" class="map-link">OTEVŘÍT MAPY.CZ</a>`;
             } else {
-                status.innerText = "❓ Souřadnice nenalezeny.";
+                status.innerText = "❓ Souřadnice nenalezeny";
             }
         }
 
         resetBtn.onclick = () => {
             freezeLayer.style.display = 'none';
-            video.style.opacity = '1';
+            video.style.visibility = 'visible';
+            debugCanvas.style.display = 'none';
             resetBtn.style.display = 'none';
             captureBtn.disabled = false;
-            status.innerText = "Namiřte rámeček na text";
+            status.innerText = "Namiřte box na souřadnice";
             mapBtnContainer.innerHTML = "";
             outputText.innerText = "";
         };
