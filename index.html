@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS Scanner -> Mapy.cz</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f0f0; margin: 0; padding: 20px; }
+        #video-container { position: relative; width: 100%; max-width: 500px; border-radius: 10px; overflow: hidden; background: #000; }
+        video { width: 100%; display: block; }
+        .controls { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        button { padding: 12px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; background: #ed2127; color: white; font-weight: bold; }
+        button:disabled { background: #ccc; }
+        #result { margin-top: 20px; padding: 15px; background: white; border-radius: 8px; width: 100%; max-width: 500px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); min-height: 50px; text-align: center; }
+        .map-link { display: inline-block; margin-top: 10px; padding: 10px 20px; background: #4a90e2; color: white; text-decoration: none; border-radius: 5px; }
+        #status { font-size: 14px; color: #666; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+    <h2>📍 GPS Text Scanner</h2>
+    
+    <div id="video-container">
+        <video id="video" autoplay playsinline></video>
+    </div>
+
+    <div class="controls">
+        <button id="capture-btn">Skenovat text</button>
+    </div>
+
+    <div id="result">
+        <div id="status">Připraveno ke skenování...</div>
+        <div id="output-text"></div>
+        <div id="map-button-container"></div>
+    </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const captureBtn = document.getElementById('capture-btn');
+        const status = document.getElementById('status');
+        const outputText = document.getElementById('output-text');
+        const mapBtnContainer = document.getElementById('map-button-container');
+
+        // 1. Spuštění kamery
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment" } 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                status.innerText = "Chyba: Nelze přistoupit ke kameře.";
+                console.error(err);
+            }
+        }
+
+        // 2. OCR logika
+        async function scanText() {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            captureBtn.disabled = true;
+            status.innerText = "Analyzuji text (to může trvat pár sekund)...";
+            mapBtnContainer.innerHTML = "";
+            
+            try {
+                // Tesseract analýza
+                const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
+                    logger: m => console.log(m)
+                });
+
+                outputText.innerText = "Nalezený text: " + text;
+                findCoordinates(text);
+
+            } catch (err) {
+                status.innerText = "Chyba při čtení textu.";
+            } finally {
+                captureBtn.disabled = false;
+            }
+        }
+
+        // 3. Hledání souřadnic pomocí Regex
+        function findCoordinates(text) {
+            // Velmi zjednodušený regex pro formát: 49.123 16.123 (číslo tečka číslo)
+            const regex = /([0-9]{1,2}\.[0-9]{3,})\s+([0-9]{1,2}\.[0-9]{3,})/;
+            const match = text.match(regex);
+
+            if (match) {
+                const lat = match[1];
+                const lon = match[2];
+                status.innerText = "✅ Souřadnice nalezeny!";
+                
+                const mapUrl = `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=15&source=coor&id=${lon}%2C${lat}`;
+                mapBtnContainer.innerHTML = `<a href="${mapUrl}" target="_blank" class="map-link">Otevřít v Mapy.cz</a>`;
+            } else {
+                status.innerText = "❌ Souřadnice nebyly rozpoznány. Zkuste to znovu zblízka.";
+            }
+        }
+
+        captureBtn.addEventListener('click', scanText);
+        initCamera();
+    </script>
+</body>
+</html>
