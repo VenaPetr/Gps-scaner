@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Scanner Pro - Smart Direction</title>
+    <title>GPS Scanner Pro - Final Fix</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
@@ -24,7 +24,7 @@
         .debug-container { margin-top: 10px; padding: 10px; background: #000; border: 1px dashed #444; border-radius: 8px; display: none; }
         #ocr-canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid #00ff00; }
         .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
-        .history-item { display: flex; justify-content: space-between; align-items: center; background: #222; margin-top: 5px; padding: 8px; border-radius: 8px; font-size: 12px; width: 100%; box-sizing: border-box; }
+        .history-item { display: flex; justify-content: space-between; align-items: center; background: #222; margin-top: 5px; padding: 8px; border-radius: 8px; font-size: 11px; width: 100%; box-sizing: border-box; }
     </style>
 </head>
 <body>
@@ -167,7 +167,6 @@
             for (let i = 0; i < d.length; i += 4) { let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > thresh) ? 255 : 0; d[i] = d[i+1] = d[i+2] = v; }
             ocrCtx.putImageData(imgData, 0, 0);
             try {
-                // Přidáno V a Z pro český východ/západ
                 const result = await Tesseract.recognize(ocrCanvas, 'eng', { 
                     tessedit_char_whitelist: '0123456789.,°\'"NSEWnsewVZvz ' 
                 });
@@ -177,42 +176,39 @@
             } catch (e) { statusDisp.innerText = "CHYBA OCR"; }
         }
 
-        // --- INTELIGENTNÍ PARSER S KONTROLOU SMĚRU ---
         function parseCoordinates(text) {
             const coordRegex = /([NSNSEWnsewVZvz]?\s*\d{1,3}[°\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[NSNSEWnsewVZvz]?)/gi;
             const matches = text.match(coordRegex);
 
-            let lat = null;
-            let lon = null;
+            let finalLat = null;
+            let finalLon = null;
 
             if (matches && matches.length >= 2) {
-                const res1 = convertToDecimal(matches[0]);
-                const res2 = convertToDecimal(matches[1]);
+                const c1 = convertToDecimal(matches[0]);
+                const c2 = convertToDecimal(matches[1]);
 
-                // Logika prohození na základě detekovaných písmen
-                if (res1.type === 'lon' || res2.type === 'lat') {
-                    lat = res2.val;
-                    lon = res1.val;
+                // CHYTRÉ ROZPOZNÁNÍ: Pokud c1 je Longitude nebo c2 je Latitude, prohodíme je.
+                if (c1.type === 'lon' || c2.type === 'lat') {
+                    finalLat = c2.val;
+                    finalLon = c1.val;
                 } else {
-                    lat = res1.val;
-                    lon = res2.val;
+                    finalLat = c1.val;
+                    finalLon = c2.val;
                 }
-                
-                if (lat && lon) {
-                    displayResult(lat, lon, "✅ FORMÁT PŘEVEDEN");
-                    return;
+            } else {
+                // Fallback pro čistě číselné zápisy (předpokládáme pořadí Lat, Lon)
+                const simpleRegex = /([0-9]{2,3}[.,][0-9]{3,})/g;
+                const simpleMatches = text.match(simpleRegex);
+                if (simpleMatches && simpleMatches.length >= 2) {
+                    finalLat = simpleMatches[0].replace(',', '.');
+                    finalLon = simpleMatches[1].replace(',', '.');
                 }
             }
-            
-            // Jednoduchý fallback pro čistě číselné zápisy (např. 50.123 14.456)
-            const simpleRegex = /([0-9]{2,3}[.,][0-9]{3,})/g;
-            const simpleMatches = text.match(simpleRegex);
-            if (simpleMatches && simpleMatches.length >= 2) {
-                lat = simpleMatches[0].replace(',', '.');
-                lon = simpleMatches[1].replace(',', '.');
-                displayResult(lat, lon, "✅ ČÍSELNÝ NÁLEZ");
+
+            if (finalLat && finalLon) {
+                displayResult(finalLat, finalLon, "✅ SOUŘADNICE ZPRACOVÁNY");
             } else {
-                statusDisp.innerText = "❓ NEROZPOZNÁNO - ZKUSTE JINÝ VÝŘEZ";
+                statusDisp.innerText = "❓ NEROZPOZNÁNO";
             }
         }
 
@@ -225,35 +221,37 @@
             else if (nums.length === 2) decimal = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60);
             else if (nums.length >= 3) decimal = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60) + (parseFloat(nums[2]) / 3600);
             
-            // Detekce typu (Latitude vs Longitude)
             let type = 'unknown';
             if (/[NSns]/.test(coordStr)) type = 'lat';
             if (/[EWewVZvz]/.test(coordStr)) type = 'lon';
 
-            // Znaménko (Jih, Západ = mínus)
             if (/[SWswZz]/.test(coordStr)) decimal = -decimal;
-            
             return { val: decimal.toFixed(6), type: type };
         }
 
         function displayResult(lat, lon, msg) {
             statusDisp.innerText = msg;
-            mapBtnContainer.innerHTML = `<a href="https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=15&source=coor&id=${lon}%2C${lat}" target="_blank" class="map-link">OTEVŘÍT V MAPY.CZ</a>`;
+            // FIX URL: x = Longitude (délka), y = Latitude (šířka)
+            const mapUrl = `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}`;
+            mapBtnContainer.innerHTML = `<a href="${mapUrl}" target="_blank" class="map-link">OTEVŘÍT V MAPY.CZ</a>`;
             saveToHistory(lat, lon);
         }
 
         function saveToHistory(lat, lon) {
-            history = history.filter(h => h.lat !== lat); history.unshift({ lat, lon });
+            history = history.filter(h => h.lat !== lat); 
+            history.unshift({ lat, lon });
             if (history.length > 5) history.pop();
-            localStorage.setItem('gps_history', JSON.stringify(history)); renderHistory();
+            localStorage.setItem('gps_history', JSON.stringify(history)); 
+            renderHistory();
         }
 
         function renderHistory() {
             const list = document.getElementById('history-list');
-            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">HISTORIE:</div>' : '';
+            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">POSLEDNÍ NÁLEZY:</div>' : '';
             history.forEach(h => {
                 const item = document.createElement('div'); item.className = 'history-item';
-                item.innerHTML = `<span>${h.lat}, ${h.lon}</span><a href="https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=15&source=coor&id=${h.lon}%2C${h.lat}" target="_blank" style="color:#4a90e2; text-decoration:none; font-weight:bold">MAPA</a>`;
+                const mapUrl = `https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=16&source=coor&id=${h.lon}%2C${h.lat}`;
+                item.innerHTML = `<span>Lat: ${h.lat}, Lon: ${h.lon}</span><a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-weight:bold">MAPA</a>`;
                 list.appendChild(item);
             });
         }
