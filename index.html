@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Scanner Ultra - Multi-format</title>
+    <title>GPS Scanner Pro - Smart Direction</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
@@ -20,7 +20,7 @@
         #ocr-selection-btn { background: #28a745; display: none; }
         #reset-btn { background: #555; display: none; }
         #result { margin-top: 15px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; }
-        #output-text { font-size: 16px; color: #00ff00; margin: 8px 0; font-family: monospace; word-break: break-all; }
+        #output-text { font-size: 15px; color: #00ff00; margin: 8px 0; font-family: monospace; word-break: break-all; background: #000; padding: 5px; }
         .debug-container { margin-top: 10px; padding: 10px; background: #000; border: 1px dashed #444; border-radius: 8px; display: none; }
         #ocr-canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid #00ff00; }
         .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
@@ -167,9 +167,9 @@
             for (let i = 0; i < d.length; i += 4) { let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > thresh) ? 255 : 0; d[i] = d[i+1] = d[i+2] = v; }
             ocrCtx.putImageData(imgData, 0, 0);
             try {
-                // Rozšířený whitelist pro značky stupňů a minut
+                // Přidáno V a Z pro český východ/západ
                 const result = await Tesseract.recognize(ocrCanvas, 'eng', { 
-                    tessedit_char_whitelist: '0123456789.,°\'"NSEWnsew ' 
+                    tessedit_char_whitelist: '0123456789.,°\'"NSEWnsewVZvz ' 
                 });
                 const text = result.data.text.trim();
                 outputText.innerText = text || "Nenalezen text";
@@ -177,44 +177,63 @@
             } catch (e) { statusDisp.innerText = "CHYBA OCR"; }
         }
 
-        // --- POKROČILÝ PARSER SOUŘADNIC ---
+        // --- INTELIGENTNÍ PARSER S KONTROLOU SMĚRU ---
         function parseCoordinates(text) {
-            // Regex hledá bloky souřadnic (Stupně, Minuty, Vteřiny)
-            const coordRegex = /([NSns]?\s*\d{1,3}[°\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[EWew]?)/gi;
+            const coordRegex = /([NSNSEWnsewVZvz]?\s*\d{1,3}[°\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[NSNSEWnsewVZvz]?)/gi;
             const matches = text.match(coordRegex);
 
+            let lat = null;
+            let lon = null;
+
             if (matches && matches.length >= 2) {
-                const lat = convertToDecimal(matches[0]);
-                const lon = convertToDecimal(matches[1]);
+                const res1 = convertToDecimal(matches[0]);
+                const res2 = convertToDecimal(matches[1]);
+
+                // Logika prohození na základě detekovaných písmen
+                if (res1.type === 'lon' || res2.type === 'lat') {
+                    lat = res2.val;
+                    lon = res1.val;
+                } else {
+                    lat = res1.val;
+                    lon = res2.val;
+                }
+                
                 if (lat && lon) {
                     displayResult(lat, lon, "✅ FORMÁT PŘEVEDEN");
                     return;
                 }
             }
             
-            // Fallback na čistě decimální formát
-            const simpleRegex = /([0-9]{2}[.,][0-9]{3,})/g;
+            // Jednoduchý fallback pro čistě číselné zápisy (např. 50.123 14.456)
+            const simpleRegex = /([0-9]{2,3}[.,][0-9]{3,})/g;
             const simpleMatches = text.match(simpleRegex);
             if (simpleMatches && simpleMatches.length >= 2) {
-                const lat = simpleMatches[0].replace(',', '.');
-                const lon = simpleMatches[1].replace(',', '.');
-                displayResult(lat, lon, "✅ DECIMÁLNÍ NÁLEZ");
+                lat = simpleMatches[0].replace(',', '.');
+                lon = simpleMatches[1].replace(',', '.');
+                displayResult(lat, lon, "✅ ČÍSELNÝ NÁLEZ");
             } else {
-                statusDisp.innerText = "❓ FORMÁT NEROZPOZNÁN";
-                mapBtnContainer.innerHTML = "";
+                statusDisp.innerText = "❓ NEROZPOZNÁNO - ZKUSTE JINÝ VÝŘEZ";
             }
         }
 
         function convertToDecimal(coordStr) {
             const nums = coordStr.match(/(\d+(\.\d+)?)/g);
-            if (!nums) return null;
-            let decimal = 0;
-            if (nums.length === 1) decimal = parseFloat(nums[0]); // DD.dddd
-            else if (nums.length === 2) decimal = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60); // DD MM.mmm
-            else if (nums.length >= 3) decimal = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60) + (parseFloat(nums[2]) / 3600); // DD MM SS
+            if (!nums) return { val: null, type: 'unknown' };
             
-            if (/[SWsw]/.test(coordStr)) decimal = -decimal;
-            return decimal.toFixed(6);
+            let decimal = 0;
+            if (nums.length === 1) decimal = parseFloat(nums[0]);
+            else if (nums.length === 2) decimal = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60);
+            else if (nums.length >= 3) decimal = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60) + (parseFloat(nums[2]) / 3600);
+            
+            // Detekce typu (Latitude vs Longitude)
+            let type = 'unknown';
+            if (/[NSns]/.test(coordStr)) type = 'lat';
+            if (/[EWewVZvz]/.test(coordStr)) type = 'lon';
+
+            // Znaménko (Jih, Západ = mínus)
+            if (/[SWswZz]/.test(coordStr)) decimal = -decimal;
+            
+            return { val: decimal.toFixed(6), type: type };
         }
 
         function displayResult(lat, lon, msg) {
