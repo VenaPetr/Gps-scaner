@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Scanner Pro v1.0.7</title>
+    <title>GPS Scanner Pro v1.0.8</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
@@ -49,7 +49,7 @@
 
     <div class="app-header">
         <div class="app-title">GPS Scanner Pro</div>
-        <div class="app-version">v1.0.7</div>
+        <div class="app-version">v1.0.8</div>
     </div>
 
     <div id="viewer-container">
@@ -91,7 +91,6 @@
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
 
     <script>
-        // ... (ponechána stejná logika jako v předchozí verzi až k funkci generateRoute) ...
         const video = document.getElementById('video'), freezeLayer = document.getElementById('freeze-layer'), cropCanvas = document.getElementById('crop-canvas');
         const rawCropCanvas = document.getElementById('raw-crop-canvas'), ocrCanvas = document.getElementById('ocr-canvas'), debugBox = document.getElementById('debug-box');
         const fileInput = document.getElementById('file-input'), captureBtn = document.getElementById('capture-btn'), fileBtn = document.getElementById('file-btn'), resetBtn = document.getElementById('reset-btn'), ocrSelectionBtn = document.getElementById('ocr-selection-btn');
@@ -280,7 +279,7 @@
             routeBtn.style.display = history.length > 0 ? 'block' : 'none';
         }
 
-        // --- NOVÁ FUNKCE PRO APLIKACI MAPY.CZ ---
+        // --- OPRAVENÁ FUNKCE v1.0.8 (RC PARAMETR) ---
         function generateRoute() {
             const selectedPoints = history.filter(h => h.selected);
             if (selectedPoints.length < 2) {
@@ -288,17 +287,17 @@
                 return;
             }
             
-            // Pro trasu v aplikaci Mapy.cz funguje nejlépe formát /planovani-trasy/
-            // Struktura: mapy.cz/planovani-trasy?x=LON&y=LAT&x=LON&y=LAT...
             const chronologicalPoints = [...selectedPoints].reverse();
 
-            let routeUrl = "https://mapy.cz/planovani-trasy?";
-            chronologicalPoints.forEach(p => {
-                routeUrl += `x=${p.lon}&y=${p.lat}&`;
+            // Skládáme řetězec Lon1_Lat1_Lon2_Lat2...
+            let rcParam = "";
+            chronologicalPoints.forEach((p, i) => {
+                rcParam += `${p.lon}_${p.lat}`;
+                if (i < chronologicalPoints.length - 1) rcParam += "_";
             });
 
-            // Odstranit poslední ampersand a přidat typ dopravy (volitelné, např. r=1 pro auto)
-            routeUrl = routeUrl.slice(0, -1);
+            // Nejsilnější odkaz pro mobilní aplikaci
+            const routeUrl = `https://mapy.cz/zakladni?planovani-trasy&rc=${rcParam}&p=1`;
             
             window.open(routeUrl, '_blank');
         }
