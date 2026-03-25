@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Scanner Pro v1.0.6</title>
+    <title>GPS Scanner Pro v1.0.7</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
@@ -41,7 +41,7 @@
         .history-controls { display: flex; align-items: center; gap: 12px; }
         .delete-btn { color: #ed2127; cursor: pointer; font-size: 18px; padding: 2px 5px; }
         
-        #route-btn { background: #4a90e2; margin-top: 15px; display: none; }
+        #route-btn { background: #4a90e2; margin-top: 15px; display: none; border: 2px solid #fff; }
         input[type="checkbox"] { transform: scale(1.3); accent-color: #28a745; cursor: pointer; }
     </style>
 </head>
@@ -49,7 +49,7 @@
 
     <div class="app-header">
         <div class="app-title">GPS Scanner Pro</div>
-        <div class="app-version">v1.0.6</div>
+        <div class="app-version">v1.0.7</div>
     </div>
 
     <div id="viewer-container">
@@ -86,11 +86,12 @@
     </div>
 
     <div id="history-list"></div>
-    <button id="route-btn" onclick="generateRoute()">VYGENEROVAT TRASU (MAPY.CZ)</button>
+    <button id="route-btn" onclick="generateRoute()">VYGENEROVAT TRASU V APLIKACI</button>
 
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
 
     <script>
+        // ... (ponechána stejná logika jako v předchozí verzi až k funkci generateRoute) ...
         const video = document.getElementById('video'), freezeLayer = document.getElementById('freeze-layer'), cropCanvas = document.getElementById('crop-canvas');
         const rawCropCanvas = document.getElementById('raw-crop-canvas'), ocrCanvas = document.getElementById('ocr-canvas'), debugBox = document.getElementById('debug-box');
         const fileInput = document.getElementById('file-input'), captureBtn = document.getElementById('capture-btn'), fileBtn = document.getElementById('file-btn'), resetBtn = document.getElementById('reset-btn'), ocrSelectionBtn = document.getElementById('ocr-selection-btn');
@@ -107,7 +108,6 @@
             } catch (err) { statusDisp.innerText = "CHYBA KAMERY"; }
         }
 
-        // --- OCR & CROP LOGIKA ---
         function getMousePos(canvas, evt) {
             const rect = canvas.getBoundingClientRect();
             const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
@@ -240,7 +240,6 @@
             saveToHistory(lat, lon);
         }
 
-        // --- HISTORIE & TRASA ---
         function saveToHistory(lat, lon) {
             history = history.filter(h => h.lat !== lat); 
             history.unshift({ lat, lon, selected: true }); 
@@ -263,7 +262,6 @@
         function renderHistory() {
             const list = document.getElementById('history-list');
             list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">HISTORIE (ZAŠKRTNĚTE PRO TRASU):</div>' : '';
-            
             history.forEach((h, index) => {
                 const item = document.createElement('div'); item.className = 'history-item';
                 const mapUrl = `https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=16&source=coor&id=${h.lon}%2C${h.lat}`;
@@ -282,7 +280,7 @@
             routeBtn.style.display = history.length > 0 ? 'block' : 'none';
         }
 
-        // --- OPRAVENÁ FUNKCE PRO GENEROVÁNÍ TRASY ---
+        // --- NOVÁ FUNKCE PRO APLIKACI MAPY.CZ ---
         function generateRoute() {
             const selectedPoints = history.filter(h => h.selected);
             if (selectedPoints.length < 2) {
@@ -290,20 +288,19 @@
                 return;
             }
             
-            // Pro trasu musíme body obrátit, aby šly v pořadí, jak byly skenovány (od nejstaršího po nejnovější)
+            // Pro trasu v aplikaci Mapy.cz funguje nejlépe formát /planovani-trasy/
+            // Struktura: mapy.cz/planovani-trasy?x=LON&y=LAT&x=LON&y=LAT...
             const chronologicalPoints = [...selectedPoints].reverse();
 
-            // Konstrukce URL pro Mapy.cz vlastni-body
-            // Klíčem je parametr 'vlastni-body' následovaný sérií x a y
-            let baseUrl = "https://mapy.cz/zakladni?vlastni-body";
-            let params = "";
-            
-            chronologicalPoints.forEach((p, i) => {
-                params += `&x=${p.lon}&y=${p.lat}&ut=Bod%20${i+1}`;
+            let routeUrl = "https://mapy.cz/planovani-trasy?";
+            chronologicalPoints.forEach(p => {
+                routeUrl += `x=${p.lon}&y=${p.lat}&`;
             });
 
-            // Otevření okna s kompletním URL
-            window.open(baseUrl + params, '_blank');
+            // Odstranit poslední ampersand a přidat typ dopravy (volitelné, např. r=1 pro auto)
+            routeUrl = routeUrl.slice(0, -1);
+            
+            window.open(routeUrl, '_blank');
         }
 
         resetBtn.onclick = () => {
