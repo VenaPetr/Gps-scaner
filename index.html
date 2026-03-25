@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Scanner Pro v1.0.4</title>
+    <title>GPS Scanner Pro v1.0.5</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
         
-        /* Nová hlavička nad rámečkem */
         .app-header { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 5px; padding: 0 5px; }
         .app-title { font-size: 12px; font-weight: bold; color: #ed2127; text-transform: uppercase; letter-spacing: 1px; }
         .app-version { font-size: 10px; color: #666; }
@@ -28,7 +27,6 @@
         #ocr-selection-btn { background: #28a745; display: none; }
         #reset-btn { background: #555; display: none; }
         
-        /* Debug div hned pod tlačítky */
         .debug-container { margin-top: 10px; padding: 10px; background: #000; border: 1px dashed #444; border-radius: 8px; width: 100%; max-width: 400px; box-sizing: border-box; display: none; }
         #ocr-canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid #00ff00; }
 
@@ -37,17 +35,23 @@
         
         .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
         
-        /* Historie s košem */
-        .history-item { display: flex; justify-content: space-between; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; width: 100%; box-sizing: border-box; }
-        .history-controls { display: flex; align-items: center; gap: 15px; }
-        .delete-btn { color: #ed2127; cursor: pointer; font-size: 16px; padding: 5px; user-select: none; }
+        /* Historie */
+        #history-list { width: 100%; max-width: 400px; margin-top: 10px; }
+        .history-item { display: flex; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; gap: 10px; }
+        .history-info { flex-grow: 1; display: flex; flex-direction: column; }
+        .history-controls { display: flex; align-items: center; gap: 12px; }
+        .delete-btn { color: #ed2127; cursor: pointer; font-size: 18px; padding: 2px 5px; }
+        
+        /* Trasa tlačítko */
+        #route-btn { background: #4a90e2; margin-top: 15px; display: none; }
+        input[type="checkbox"] { transform: scale(1.3); accent-color: #28a745; cursor: pointer; }
     </style>
 </head>
 <body>
 
     <div class="app-header">
         <div class="app-title">GPS Scanner Pro</div>
-        <div class="app-version">v1.0.4</div>
+        <div class="app-version">v1.0.5</div>
     </div>
 
     <div id="viewer-container">
@@ -83,15 +87,16 @@
         <div id="map-button-container"></div>
     </div>
 
-    <div id="history-list" style="width: 100%; max-width: 400px; margin-top: 10px;"></div>
+    <div id="history-list"></div>
+    <button id="route-btn" onclick="generateRoute()">VYGENEROVAT TRASU (MAPY.CZ)</button>
+
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
 
     <script>
         const video = document.getElementById('video'), freezeLayer = document.getElementById('freeze-layer'), cropCanvas = document.getElementById('crop-canvas');
         const rawCropCanvas = document.getElementById('raw-crop-canvas'), ocrCanvas = document.getElementById('ocr-canvas'), debugBox = document.getElementById('debug-box');
         const fileInput = document.getElementById('file-input'), captureBtn = document.getElementById('capture-btn'), fileBtn = document.getElementById('file-btn'), resetBtn = document.getElementById('reset-btn'), ocrSelectionBtn = document.getElementById('ocr-selection-btn');
-        const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text'), mapBtnContainer = document.getElementById('map-button-container');
-        const zoomSlider = document.getElementById('zoom-slider'), thresholdSlider = document.getElementById('threshold-slider');
+        const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text'), mapBtnContainer = document.getElementById('map-button-container'), routeBtn = document.getElementById('route-btn');
 
         let videoTrack = null, isFrozen = false, isGalleryMode = false, isDrawing = false, sourceImg = null, startX, startY, selection = { x: 0, y: 0, w: 0, h: 0 };
         let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
@@ -104,6 +109,7 @@
             } catch (err) { statusDisp.innerText = "CHYBA KAMERY"; }
         }
 
+        // --- OCR & CROP LOGIKA ---
         function getMousePos(canvas, evt) {
             const rect = canvas.getBoundingClientRect();
             const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
@@ -165,7 +171,7 @@
         captureBtn.onclick = async () => {
             if (!video.videoWidth) return;
             isFrozen = true; isGalleryMode = false;
-            const z = parseFloat(zoomSlider.value);
+            const z = parseFloat(document.getElementById('zoom-slider').value);
             freezeLayer.width = 600; freezeLayer.height = 600;
             freezeLayer.getContext('2d').drawImage(video, 0, 0, 600, 600);
             freezeLayer.style.display = 'block'; video.style.display = 'none';
@@ -185,6 +191,7 @@
             let d = imgData.data, totalB = 0;
             for (let i = 0; i < d.length; i += 4) totalB += (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11);
             let avgB = totalB / (d.length / 4);
+            let thresholdSlider = document.getElementById('threshold-slider');
             let thresh = (thresholdSlider.value == 128) ? avgB : thresholdSlider.value;
             if(thresholdSlider.value == 128) document.getElementById('threshold-val').innerText = "Auto (" + Math.round(avgB) + ")";
             for (let i = 0; i < d.length; i += 4) { let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > thresh) ? 255 : 0; d[i] = d[i+1] = d[i+2] = v; }
@@ -210,7 +217,7 @@
                 const simpleMatches = text.match(simpleRegex);
                 if (simpleMatches && simpleMatches.length >= 2) { fLat = simpleMatches[0].replace(',', '.'); fLon = simpleMatches[1].replace(',', '.'); }
             }
-            if (fLat && fLon) displayResult(fLat, fLon, "✅ SOUŘADNICE ZPRACOVÁNY");
+            if (fLat && fLon) displayResult(fLat, fLon, "✅ ZPRACOVÁNO");
             else statusDisp.innerText = "❓ NEROZPOZNÁNO";
         }
 
@@ -231,19 +238,24 @@
         function displayResult(lat, lon, msg) {
             statusDisp.innerText = msg;
             const mapUrl = `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}`;
-            mapBtnContainer.innerHTML = `<a href="${mapUrl}" target="_blank" class="map-link">OTEVŘÍT V MAPY.CZ</a>`;
+            mapBtnContainer.innerHTML = `<a href="${mapUrl}" target="_blank" class="map-link">ZOBRAZIT BOD NA MAPĚ</a>`;
             saveToHistory(lat, lon);
         }
 
+        // --- HISTORIE & TRASA ---
         function saveToHistory(lat, lon) {
             history = history.filter(h => h.lat !== lat); 
-            history.unshift({ lat, lon });
-            if (history.length > 10) history.pop();
+            history.unshift({ lat, lon, selected: true }); // Automaticky zaškrtnuto
+            if (history.length > 20) history.pop();
             localStorage.setItem('gps_history', JSON.stringify(history)); 
             renderHistory();
         }
 
-        // --- NOVÁ FUNKCE MAZÁNÍ ---
+        function toggleSelection(index) {
+            history[index].selected = !history[index].selected;
+            localStorage.setItem('gps_history', JSON.stringify(history));
+        }
+
         function deleteHistoryItem(index) {
             history.splice(index, 1);
             localStorage.setItem('gps_history', JSON.stringify(history));
@@ -252,38 +264,63 @@
 
         function renderHistory() {
             const list = document.getElementById('history-list');
-            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">POSLEDNÍ NÁLEZY:</div>' : '';
+            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">HISTORIE (ZAŠKRTNĚTE PRO TRASU):</div>' : '';
+            
             history.forEach((h, index) => {
                 const item = document.createElement('div'); item.className = 'history-item';
                 const mapUrl = `https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=16&source=coor&id=${h.lon}%2C${h.lat}`;
                 item.innerHTML = `
-                    <span>Lat: ${h.lat}, Lon: ${h.lon}</span>
+                    <input type="checkbox" ${h.selected ? 'checked' : ''} onchange="toggleSelection(${index})">
+                    <div class="history-info">
+                        <span style="font-weight:bold; color:#00ff00">${h.lat}, ${h.lon}</span>
+                    </div>
                     <div class="history-controls">
-                        <a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-weight:bold">MAPA</a>
+                        <a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-size:10px">BOD</a>
                         <span class="delete-btn" onclick="deleteHistoryItem(${index})">🗑</span>
                     </div>
                 `;
                 list.appendChild(item);
             });
+            routeBtn.style.display = history.length > 0 ? 'block' : 'none';
         }
 
+        function generateRoute() {
+            const selectedPoints = history.filter(h => h.selected);
+            if (selectedPoints.length < 1) {
+                alert("Vyberte alespoň jeden bod v historii!");
+                return;
+            }
+            
+            // Mapy.cz formát: vlastni-body?x=LON&y=LAT&ut=Název...
+            // Pro trasu použijeme sekvenci bodů: vlastni-body?x=LON1&y=LAT1&x=LON2&y=LAT2...
+            let pointsParam = "";
+            selectedPoints.forEach((p, i) => {
+                pointsParam += `&x=${p.lon}&y=${p.lat}&ut=Bod%20${i+1}`;
+            });
+
+            const routeUrl = `https://mapy.cz/turisticka?vlastni-body${pointsParam}`;
+            window.open(routeUrl, '_blank');
+        }
+
+        // --- OSTATNÍ OVLÁDÁNÍ ---
         resetBtn.onclick = () => {
             isFrozen = false; isGalleryMode = false; sourceImg = null;
             video.style.display = 'block'; freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
             document.getElementById('rect-overlay').style.display = 'block';
             resetBtn.style.display = 'none'; ocrSelectionBtn.style.display = 'none'; debugBox.style.display = 'none';
             captureBtn.style.display = 'block'; statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---";
-            mapBtnContainer.innerHTML = ""; fileInput.value = "";
+            mapBtnContainer.innerHTML = ""; document.getElementById('file-input').value = "";
             const ctx = cropCanvas.getContext('2d'); ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
         };
 
-        thresholdSlider.oninput = () => {
-            document.getElementById('threshold-val').innerText = thresholdSlider.value == 128 ? "Auto" : thresholdSlider.value;
+        document.getElementById('threshold-slider').oninput = () => {
+            document.getElementById('threshold-val').innerText = document.getElementById('threshold-slider').value == 128 ? "Auto" : document.getElementById('threshold-slider').value;
             if (isFrozen) isGalleryMode ? runOcrOnSelection() : processImageAndOCR();
         };
 
-        zoomSlider.oninput = async () => {
-            const val = zoomSlider.value; document.getElementById('zoom-val').innerText = val;
+        document.getElementById('zoom-slider').oninput = async () => {
+            const val = document.getElementById('zoom-slider').value; 
+            document.getElementById('zoom-val').innerText = val;
             video.style.transform = `scale(${val})`;
             if (videoTrack && videoTrack.getCapabilities().zoom) { try { await videoTrack.applyConstraints({ advanced: [{ zoom: val }] }); } catch (e) {} }
         };
