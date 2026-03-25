@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Scanner - Hardware Focus Edition</title>
+    <title>GPS Scanner - Live Tuning</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: manipulation; }
-        #viewer-container { position: relative; width: 100%; max-width: 400px; aspect-ratio: 1/1; border: 2px solid #ed2127; border-radius: 15px; overflow: hidden; background: #000; cursor: crosshair; }
+        #viewer-container { position: relative; width: 100%; max-width: 400px; aspect-ratio: 1/1; border: 2px solid #ed2127; border-radius: 15px; overflow: hidden; background: #000; }
         video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transform-origin: center; }
         #freeze-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; display: none; z-index: 5; background: black; }
         .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 15%; border: 2px solid #00ff00; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); z-index: 10; pointer-events: none; }
@@ -51,11 +51,7 @@
         
         <div id="debug-container">
             <div class="debug-box">
-                <label>1. Originál výřez:</label>
-                <canvas id="debug-raw-canvas" class="preview"></canvas>
-            </div>
-            <div class="debug-box">
-                <label>2. Binární (pro OCR):</label>
+                <label>Vstup pro OCR (upravte sliderem):</label>
                 <canvas id="debug-bin-canvas" class="preview"></canvas>
             </div>
         </div>
@@ -67,13 +63,14 @@
         <div id="map-button-container"></div>
     </div>
 
+    <canvas id="raw-crop-canvas" style="display:none;"></canvas>
     <canvas id="ocr-canvas" style="display:none;"></canvas>
 
     <script>
         const video = document.getElementById('video');
         const freezeLayer = document.getElementById('freeze-layer');
         const ocrCanvas = document.getElementById('ocr-canvas');
-        const debugRawCanvas = document.getElementById('debug-raw-canvas');
+        const rawCropCanvas = document.getElementById('raw-crop-canvas');
         const debugBinCanvas = document.getElementById('debug-bin-canvas');
         const debugContainer = document.getElementById('debug-container');
         const captureBtn = document.getElementById('capture-btn');
@@ -87,71 +84,57 @@
         const thresholdVal = document.getElementById('threshold-val');
 
         let videoTrack = null;
+        let isFrozen = false;
 
-        // MANUÁLNÍ OSTŘENÍ (TAP TO FOCUS)
         async function manualFocus() {
-            if (!videoTrack) return;
+            if (!videoTrack || isFrozen) return;
             const capabilities = videoTrack.getCapabilities();
-            
             if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
                 try {
                     status.innerText = "🎯 Ostřím...";
-                    await videoTrack.applyConstraints({
-                        advanced: [{ focusMode: "continuous" }]
-                    });
-                    setTimeout(() => { if(!resetBtn.style.display || resetBtn.style.display === 'none') status.innerText = "Připraveno ke skenování"; }, 1500);
+                    await videoTrack.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+                    setTimeout(() => { if(!isFrozen) status.innerText = "Připraveno ke skenování"; }, 1500);
                 } catch (e) { console.error(e); }
             }
         }
 
-        // HARDWAROVÝ ZOOM
         zoomSlider.oninput = async () => {
             const val = zoomSlider.value;
             zoomVal.innerText = val;
-            
-            // 1. Vizuální zoom (CSS) pro jistotu
             video.style.transform = `scale(${val})`;
-
-            // 2. Hardwarový zoom (skutečná čočka)
             if (videoTrack && videoTrack.getCapabilities().zoom) {
-                try {
-                    await videoTrack.applyConstraints({
-                        advanced: [{ zoom: val }]
-                    });
-                } catch (e) { console.log("HW Zoom není podporován"); }
+                try { await videoTrack.applyConstraints({ advanced: [{ zoom: val }] }); } catch (e) {}
             }
         };
 
+        // HLAVNÍ ZMĚNA: Reakce slideru po zafreezování
         thresholdSlider.oninput = () => {
             thresholdVal.innerText = thresholdSlider.value;
+            if (isFrozen) {
+                processImageAndOCR(); // Přepočítat okamžitě při pohybu sliderem
+            }
         };
 
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: "environment", 
-                        width: { ideal: 1920 }, 
-                        height: { ideal: 1080 }
-                    } 
+                    video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } 
                 });
                 video.srcObject = stream;
                 videoTrack = stream.getVideoTracks()[0];
-
-                // Aplikace počátečního zoomu a ostření po krátké prodlevě
                 setTimeout(() => zoomSlider.oninput(), 1000);
-
-            } catch (err) { status.innerText = "Chyba kamery. Povolte přístup."; }
+            } catch (err) { status.innerText = "Chyba kamery."; }
         }
 
         async function scanText() {
             if (!video.videoWidth) return;
+            isFrozen = true;
 
             const z = parseFloat(zoomSlider.value);
             const vw = video.videoWidth;
             const vh = video.videoHeight;
 
-            // Zmrazení obrazu
+            // 1. Zmrazit náhled
             const fCtx = freezeLayer.getContext('2d');
             freezeLayer.width = video.clientWidth;
             freezeLayer.height = video.clientHeight;
@@ -162,45 +145,57 @@
             captureBtn.disabled = true;
             resetBtn.style.display = 'block';
             debugContainer.style.display = 'flex';
-            status.innerText = "⏳ Analyzuji...";
 
-            // Výřez (CROP)
-            const ctx = ocrCanvas.getContext('2d', {willReadFrequently: true});
-            // Výpočet výřezu s ohledem na zoom
+            // 2. Uložit ČISTÝ výřez do skrytého plátna (rawCropCanvas)
             const sw = (vw / z) * 0.8;
             const sh = (vh / z) * 0.15;
             const sx = (vw - sw) / 2;
             const sy = (vh - sh) / 2;
 
-            ocrCanvas.width = sw * 2;
-            ocrCanvas.height = sh * 2;
-            ctx.drawImage(video, sx, sy, sw, sh, 0, 0, ocrCanvas.width, ocrCanvas.height);
+            rawCropCanvas.width = sw * 2;
+            rawCropCanvas.height = sh * 2;
+            const rCtx = rawCropCanvas.getContext('2d');
+            rCtx.drawImage(video, sx, sy, sw, sh, 0, 0, rawCropCanvas.width, rawCropCanvas.height);
 
-            debugRawCanvas.width = ocrCanvas.width;
-            debugRawCanvas.height = ocrCanvas.height;
-            debugRawCanvas.getContext('2d').drawImage(ocrCanvas, 0, 0);
+            // 3. Spustit zpracování
+            processImageAndOCR();
+        }
 
-            let imgData = ctx.getImageData(0, 0, ocrCanvas.width, ocrCanvas.height);
+        async function processImageAndOCR() {
+            status.innerText = "⏳ Zpracovávám...";
+            
+            const rawCtx = rawCropCanvas.getContext('2d');
+            const ocrCtx = ocrCanvas.getContext('2d');
+            ocrCanvas.width = rawCropCanvas.width;
+            ocrCanvas.height = rawCropCanvas.height;
+
+            // Získat data z čistého výřezu
+            let imgData = rawCtx.getImageData(0, 0, rawCropCanvas.width, rawCropCanvas.height);
             let d = imgData.data;
             
+            // Výpočet prahu
             let totalBrightness = 0;
             for (let i = 0; i < d.length; i += 4) {
                 totalBrightness += (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11);
             }
             let autoThreshold = totalBrightness / (d.length / 4);
             let finalThreshold = (thresholdSlider.value == 128) ? autoThreshold : thresholdSlider.value;
-            
+            if(thresholdSlider.value == 128) thresholdVal.innerText = "Auto (" + Math.round(autoThreshold) + ")";
+
+            // Binarizace
             for (let i = 0; i < d.length; i += 4) {
                 let gray = d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11;
                 let v = (gray > finalThreshold) ? 255 : 0; 
                 d[i] = d[i+1] = d[i+2] = v;
             }
-            ctx.putImageData(imgData, 0, 0);
+            ocrCtx.putImageData(imgData, 0, 0);
 
+            // Debug náhled
             debugBinCanvas.width = ocrCanvas.width;
             debugBinCanvas.height = ocrCanvas.height;
             debugBinCanvas.getContext('2d').putImageData(imgData, 0, 0);
 
+            // OCR Samotné
             try {
                 const { data: { text } } = await Tesseract.recognize(ocrCanvas, 'eng', {
                     tessedit_char_whitelist: '0123456789., '
@@ -218,10 +213,11 @@
                 const lon = matches[1].replace(/[,\s]/, '.');
                 status.innerText = "✅ NALEZENO";
                 mapBtnContainer.innerHTML = `<a href="https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=15&source=coor&id=${lon}%2C${lat}" target="_blank" class="map-link">OTEVŘÍT MAPY.CZ</a>`;
-            } else { status.innerText = "❓ Souřadnice nenalezeny"; }
+            } else { status.innerText = "❓ Souřadnice nenalezeny"; mapBtnContainer.innerHTML = ""; }
         }
 
         resetBtn.onclick = () => {
+            isFrozen = false;
             freezeLayer.style.display = 'none';
             video.style.visibility = 'visible';
             debugContainer.style.display = 'none';
