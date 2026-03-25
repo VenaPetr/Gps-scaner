@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Scanner Pro v1.0.5</title>
+    <title>GPS Location Finder</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
@@ -39,15 +39,13 @@
         .history-item { display: flex; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; gap: 10px; }
         .history-info { flex-grow: 1; display: flex; flex-direction: column; }
         .delete-btn { color: #ed2127; cursor: pointer; font-size: 18px; padding: 2px 5px; }
-        
-        #route-btn { background: #4a90e2; margin-top: 15px; display: none; }
     </style>
 </head>
 <body>
 
     <div class="app-header">
-        <div class="app-title">GPS Scanner Pro</div>
-        <div class="app-version">v1.0.5</div>
+        <div class="app-title">GPS Location Finder</div>
+        <div class="app-version">v1.0.5-stable</div>
     </div>
 
     <div id="viewer-container">
@@ -84,7 +82,6 @@
     </div>
 
     <div id="history-list"></div>
-    <button id="route-btn" onclick="generateRoute()">OTEVŘÍT TRASU (BETA)</button>
 
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
 
@@ -92,7 +89,7 @@
         const video = document.getElementById('video'), freezeLayer = document.getElementById('freeze-layer'), cropCanvas = document.getElementById('crop-canvas');
         const rawCropCanvas = document.getElementById('raw-crop-canvas'), ocrCanvas = document.getElementById('ocr-canvas'), debugBox = document.getElementById('debug-box');
         const fileInput = document.getElementById('file-input'), captureBtn = document.getElementById('capture-btn'), fileBtn = document.getElementById('file-btn'), resetBtn = document.getElementById('reset-btn'), ocrSelectionBtn = document.getElementById('ocr-selection-btn');
-        const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text'), mapBtnContainer = document.getElementById('map-button-container'), routeBtn = document.getElementById('route-btn');
+        const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text'), mapBtnContainer = document.getElementById('map-button-container');
 
         let videoTrack = null, isFrozen = false, isGalleryMode = false, isDrawing = false, sourceImg = null, startX, startY, selection = { x: 0, y: 0, w: 0, h: 0 };
         let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
@@ -266,15 +263,6 @@
                 `;
                 list.appendChild(item);
             });
-            routeBtn.style.display = history.length > 1 ? 'block' : 'none';
-        }
-
-        function generateRoute() {
-            if (history.length < 2) return;
-            const p1 = history[history.length - 1]; // První naskenovaný
-            const p2 = history[0]; // Poslední naskenovaný
-            const routeUrl = `https://mapy.cz/zakladni?x=${p2.lon}&y=${p2.lat}&z=11&source=coor&id=${p1.lon}%2C${p1.lat}&source=coor&id=${p2.lon}%2C${p2.lat}`;
-            window.open(routeUrl, '_blank');
         }
 
         resetBtn.onclick = () => {
