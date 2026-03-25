@@ -3,30 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Scanner - Fixed Crop</title>
+    <title>GPS Scanner - Perfect Crop</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; overflow-x: hidden; }
-        #viewer-container { position: relative; width: 100%; max-width: 400px; aspect-ratio: 1/1; border: 2px solid #ed2127; border-radius: 15px; overflow: hidden; background: #000; }
-        video, #freeze-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-        #freeze-layer { object-fit: contain; display: none; z-index: 5; background: black; }
-        #crop-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; display: none; cursor: crosshair; touch-action: none; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
+        #viewer-container { position: relative; width: 100%; max-width: 400px; border: 2px solid #ed2127; border-radius: 15px; overflow: hidden; background: #000; }
+        /* Důležité: video a freeze-layer musí mít stejné chování */
+        video, #freeze-layer { width: 100%; display: block; object-fit: cover; aspect-ratio: 1/1; }
+        #freeze-layer { display: none; object-fit: fill; } /* Změněno na fill pro přesný ořez */
+        #crop-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; display: none; touch-action: none; }
         .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 15%; border: 2px solid #00ff00; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); z-index: 10; pointer-events: none; }
         .settings-box { width: 100%; max-width: 400px; margin: 10px 0; background: #222; padding: 10px; border-radius: 10px; box-sizing: border-box; }
         label { font-size: 11px; color: #888; display: block; margin-bottom: 5px; }
         input[type=range] { width: 100%; accent-color: #ed2127; margin-bottom: 10px; }
         .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; }
         button { width: 100%; padding: 16px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; }
-        #file-btn { background: #444; padding: 12px; }
         #ocr-selection-btn { background: #28a745; display: none; }
         #reset-btn { background: #555; display: none; }
         #result { margin-top: 15px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; }
-        #status { font-size: 12px; color: #f39c12; margin-bottom: 5px; font-weight: bold; }
         #output-text { font-size: 18px; color: #00ff00; margin: 8px 0; font-family: monospace; font-weight: bold; }
         .debug-container { margin-top: 10px; padding: 10px; background: #000; border: 1px dashed #444; border-radius: 8px; display: none; }
         #ocr-canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid #00ff00; }
         .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
-        .history-item { display: flex; justify-content: space-between; align-items: center; background: #222; margin-top: 5px; padding: 8px; border-radius: 8px; font-size: 13px; width: 100%; max-width: 384px; box-sizing: border-box; }
     </style>
 </head>
 <body>
@@ -41,13 +39,13 @@
     <div class="settings-box">
         <label>Zoom (Kamera): <span id="zoom-val">1.5</span>x</label>
         <input type="range" id="zoom-slider" min="1" max="8" step="0.1" value="1.5">
-        <label>OCR Citlivost (Threshold): <span id="threshold-val">Auto</span></label>
+        <label>OCR Citlivost: <span id="threshold-val">Auto</span></label>
         <input type="range" id="threshold-slider" min="0" max="255" step="1" value="128">
     </div>
 
     <div class="controls">
         <button id="capture-btn">SKENOVAT KAMEROU</button>
-        <button id="file-btn">FOTKA Z GALERIE</button>
+        <button id="file-btn" style="background:#444">FOTKA Z GALERIE</button>
         <input type="file" id="file-input" accept="image/*" style="display: none;">
         <button id="ocr-selection-btn">PŘEČÍST VÝBĚR</button>
         <button id="reset-btn">ZPĚT KE KAMERĚ</button>
@@ -57,13 +55,13 @@
         <div id="status">PŘIPRAVENO</div>
         <div id="output-text">---</div>
         <div id="debug-box" class="debug-container">
-            <label style="color: #00ff00; margin-bottom: 5px;">ČERNOBÍLÝ VSTUP:</label>
+            <label style="color: #00ff00; font-size: 10px;">BINÁRNÍ VÝŘEZ:</label>
             <canvas id="ocr-canvas"></canvas>
         </div>
         <div id="map-button-container"></div>
     </div>
 
-    <div id="history-list"></div>
+    <div id="history-list" style="width: 100%; max-width: 400px; margin-top: 10px;"></div>
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
 
     <script>
@@ -84,11 +82,11 @@
             } catch (err) { statusDisp.innerText = "CHYBA KAMERY"; }
         }
 
+        // Pomocná funkce pro získání souřadnic dotyku/myši relativně k rozlišení canvasu
         function getMousePos(canvas, evt) {
             const rect = canvas.getBoundingClientRect();
             const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
             const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
-            // Převod souřadnic dotyku na souřadnice vnitřního rozlišení canvasu
             return {
                 x: (clientX - rect.left) * (canvas.width / rect.width),
                 y: (clientY - rect.top) * (canvas.height / rect.height)
@@ -103,27 +101,36 @@
                 const img = new Image();
                 img.onload = () => {
                     sourceImg = img; isFrozen = true; isGalleryMode = true;
-                    video.style.visibility = 'hidden'; document.getElementById('rect-overlay').style.display = 'none';
-                    freezeLayer.width = cropCanvas.width = 800;
-                    freezeLayer.height = cropCanvas.height = (img.height / img.width) * 800;
-                    freezeLayer.getContext('2d').drawImage(img, 0, 0, freezeLayer.width, freezeLayer.height);
+                    video.style.display = 'none'; document.getElementById('rect-overlay').style.display = 'none';
+                    
+                    // Přizpůsobíme výšku kontejneru poměru stran fotky
+                    const aspect = img.height / img.width;
+                    const containerWidth = document.getElementById('viewer-container').offsetWidth;
+                    
+                    freezeLayer.width = cropCanvas.width = 1000; // Fixní vnitřní rozlišení pro kreslení
+                    freezeLayer.height = cropCanvas.height = 1000 * aspect;
+                    
+                    // Vykreslení na celou plochu (fill)
+                    const ctx = freezeLayer.getContext('2d');
+                    ctx.drawImage(img, 0, 0, freezeLayer.width, freezeLayer.height);
+                    
                     freezeLayer.style.display = 'block'; cropCanvas.style.display = 'block';
                     resetBtn.style.display = 'block'; captureBtn.style.display = 'none';
-                    statusDisp.innerText = "NAKRESLETE RÁMEČEK PŘES TEXT";
+                    statusDisp.innerText = "VYBERTE TEXT RÁMEČKEM";
                 };
                 img.src = ev.target.result;
             };
             reader.readAsDataURL(file);
         };
 
-        const startDraw = (e) => { if(!isGalleryMode) return; isDrawing = true; const p = getMousePos(cropCanvas, e); startX = p.x; startY = p.y; };
+        const startDraw = (e) => { if(!isGalleryMode) return; isDrawing = true; const p = getMousePos(cropCanvas, e); startX = p.x; startY = p.y; selection = {x:p.x, y:p.y, w:0, h:0}; };
         const doDraw = (e) => {
             if (!isDrawing) return;
             const p = getMousePos(cropCanvas, e);
             selection = { x: Math.min(startX, p.x), y: Math.min(startY, p.y), w: Math.abs(p.x - startX), h: Math.abs(p.y - startY) };
             const ctx = cropCanvas.getContext('2d');
             ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
-            ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 4;
+            ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 5;
             ctx.strokeRect(selection.x, selection.y, selection.w, selection.h);
         };
         const endDraw = () => { if (!isDrawing) return; isDrawing = false; if (selection.w > 10) { ocrSelectionBtn.style.display = 'block'; runOcrOnSelection(); } };
@@ -137,17 +144,17 @@
 
         function runOcrOnSelection() {
             if (!sourceImg) return;
-            const scaleX = sourceImg.width / cropCanvas.width;
-            const scaleY = sourceImg.height / cropCanvas.height;
+            // Teď je poměr 1:1, protože freezeLayer má stejný poměr stran jako sourceImg
+            const scaleX = sourceImg.width / freezeLayer.width;
+            const scaleY = sourceImg.height / freezeLayer.height;
+            
             rawCropCanvas.width = selection.w * scaleX;
             rawCropCanvas.height = selection.h * scaleY;
+            
             const ctx = rawCropCanvas.getContext('2d');
-            ctx.clearRect(0, 0, rawCropCanvas.width, rawCropCanvas.height);
             ctx.drawImage(sourceImg, selection.x * scaleX, selection.y * scaleY, selection.w * scaleX, selection.h * scaleY, 0, 0, rawCropCanvas.width, rawCropCanvas.height);
             processImageAndOCR();
         }
-
-        ocrSelectionBtn.onclick = runOcrOnSelection;
 
         captureBtn.onclick = async () => {
             if (!video.videoWidth) return;
@@ -155,7 +162,7 @@
             const z = parseFloat(zoomSlider.value);
             freezeLayer.width = 600; freezeLayer.height = 600;
             freezeLayer.getContext('2d').drawImage(video, 0, 0, 600, 600);
-            freezeLayer.style.display = 'block'; video.style.visibility = 'hidden';
+            freezeLayer.style.display = 'block'; video.style.display = 'none';
             const sw = (video.videoWidth / z) * 0.8, sh = (video.videoHeight / z) * 0.15;
             const sx = (video.videoWidth - sw) / 2, sy = (video.videoHeight - sh) / 2;
             rawCropCanvas.width = sw * 2; rawCropCanvas.height = sh * 2;
@@ -204,7 +211,7 @@
             const list = document.getElementById('history-list');
             list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">POSLEDNÍ ÚSPĚŠNÉ:</div>' : '';
             history.forEach(h => {
-                const item = document.createElement('div'); item.className = 'history-item';
+                const item = document.createElement('div'); item.style = 'display:flex; justify-content:space-between; align-items:center; background:#222; margin-top:5px; padding:8px; border-radius:8px; font-size:13px; width:100%; box-sizing:border-box;';
                 item.innerHTML = `<span>${h.lat}, ${h.lon}</span><a href="https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=15&source=coor&id=${h.lon}%2C${h.lat}" target="_blank" style="color:#4a90e2; text-decoration:none; font-weight:bold">MAPA</a>`;
                 list.appendChild(item);
             });
@@ -212,7 +219,7 @@
 
         resetBtn.onclick = () => {
             isFrozen = false; isGalleryMode = false; sourceImg = null;
-            video.style.visibility = 'visible'; freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
+            video.style.display = 'block'; freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
             document.getElementById('rect-overlay').style.display = 'block';
             resetBtn.style.display = 'none'; ocrSelectionBtn.style.display = 'none'; debugBox.style.display = 'none';
             captureBtn.style.display = 'block'; statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---";
