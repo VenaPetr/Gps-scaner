@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Scanner - Final Stable</title>
+    <title>GPS Scanner - Visual OCR</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; overflow-x: hidden; }
@@ -25,9 +25,13 @@
 
         #result { margin-top: 15px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; }
         #status { font-size: 12px; color: #f39c12; margin-bottom: 5px; font-weight: bold; }
-        #output-text { font-size: 16px; color: #00ff00; margin: 8px 0; font-family: monospace; font-weight: bold; min-height: 1.2em; word-break: break-all; }
-        .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
+        #output-text { font-size: 18px; color: #00ff00; margin: 8px 0; font-family: monospace; font-weight: bold; }
         
+        /* Styl pro černobílý náhled */
+        .debug-container { margin-top: 10px; padding: 10px; background: #000; border: 1px dashed #444; border-radius: 8px; display: none; }
+        #ocr-canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid #00ff00; }
+        
+        .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
         .history-item { display: flex; justify-content: space-between; align-items: center; background: #222; margin-top: 5px; padding: 8px; border-radius: 8px; font-size: 13px; width: 100%; max-width: 384px; box-sizing: border-box; }
     </style>
 </head>
@@ -58,13 +62,18 @@
     <div id="result">
         <div id="status">PŘIPRAVENO</div>
         <div id="output-text">---</div>
+        
+        <div id="debug-box" class="debug-container">
+            <label style="color: #00ff00; margin-bottom: 5px;">ČERNOBÍLÝ VSTUP:</label>
+            <canvas id="ocr-canvas"></canvas>
+        </div>
+
         <div id="map-button-container"></div>
     </div>
 
     <div id="history-list" style="width: 100%; max-width: 400px; margin-top: 10px;"></div>
 
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
-    <canvas id="ocr-canvas" style="display:none;"></canvas>
 
     <script>
         const video = document.getElementById('video');
@@ -72,6 +81,7 @@
         const cropCanvas = document.getElementById('crop-canvas');
         const rawCropCanvas = document.getElementById('raw-crop-canvas');
         const ocrCanvas = document.getElementById('ocr-canvas');
+        const debugBox = document.getElementById('debug-box');
         const fileInput = document.getElementById('file-input');
         const captureBtn = document.getElementById('capture-btn');
         const fileBtn = document.getElementById('file-btn');
@@ -83,43 +93,30 @@
         const zoomSlider = document.getElementById('zoom-slider');
         const thresholdSlider = document.getElementById('threshold-slider');
 
-        let videoTrack = null;
-        let isFrozen = false;
-        let isGalleryMode = false;
-        let sourceImg = null;
-        let isDrawing = false;
-        let startX, startY;
-        let selection = { x: 0, y: 0, w: 0, h: 0 };
+        let videoTrack = null, isFrozen = false, isGalleryMode = false, isDrawing = false;
+        let sourceImg = null, startX, startY, selection = { x: 0, y: 0, w: 0, h: 0 };
         let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
 
-        // Kamera inicializace
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
                 });
-                video.srcObject = stream;
-                videoTrack = stream.getVideoTracks()[0];
+                video.srcObject = stream; videoTrack = stream.getVideoTracks()[0];
                 renderHistory();
             } catch (err) { statusDisp.innerText = "CHYBA KAMERY"; }
         }
 
-        // --- POMOCNÉ FUNKCE ---
         function getMousePos(canvas, evt) {
             const rect = canvas.getBoundingClientRect();
             const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
             const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
-            return {
-                x: (clientX - rect.left) * (canvas.width / rect.width),
-                y: (clientY - rect.top) * (canvas.height / rect.height)
-            };
+            return { x: (clientX - rect.left) * (canvas.width / rect.width), y: (clientY - rect.top) * (canvas.height / rect.height) };
         }
 
-        // --- GALERIE LOGIKA ---
         fileBtn.onclick = () => fileInput.click();
         fileInput.onchange = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+            const file = e.target.files[0]; if (!file) return;
             const reader = new FileReader();
             reader.onload = (ev) => {
                 const img = new Image();
@@ -127,16 +124,11 @@
                     sourceImg = img; isFrozen = true; isGalleryMode = true;
                     video.style.visibility = 'hidden';
                     document.getElementById('rect-overlay').style.display = 'none';
-                    
-                    // Nastavení pláten pro kreslení
-                    freezeLayer.width = cropCanvas.width = 800; // Vyšší rozlišení pro kreslení
+                    freezeLayer.width = cropCanvas.width = 800;
                     freezeLayer.height = cropCanvas.height = (img.height / img.width) * 800;
                     freezeLayer.getContext('2d').drawImage(img, 0, 0, freezeLayer.width, freezeLayer.height);
-                    
-                    freezeLayer.style.display = 'block';
-                    cropCanvas.style.display = 'block';
-                    resetBtn.style.display = 'block';
-                    captureBtn.style.display = 'none';
+                    freezeLayer.style.display = 'block'; cropCanvas.style.display = 'block';
+                    resetBtn.style.display = 'block'; captureBtn.style.display = 'none';
                     statusDisp.innerText = "NAKRESLETE RÁMEČEK PŘES TEXT";
                 };
                 img.src = ev.target.result;
@@ -144,7 +136,6 @@
             reader.readAsDataURL(file);
         };
 
-        // --- KRESLENÍ NA CANVAS ---
         const startDraw = (e) => { if(!isGalleryMode) return; isDrawing = true; const p = getMousePos(cropCanvas, e); startX = p.x; startY = p.y; };
         const doDraw = (e) => {
             if (!isDrawing) return;
@@ -156,13 +147,8 @@
             ctx.strokeRect(selection.x, selection.y, selection.w, selection.h);
         };
         const endDraw = () => {
-            if (!isDrawing) return;
-            isDrawing = false;
-            if (selection.w > 10) {
-                ocrSelectionBtn.style.display = 'block';
-                statusDisp.innerText = "VÝBĚR PŘIPRAVEN";
-                runOcrOnSelection();
-            }
+            if (!isDrawing) return; isDrawing = false;
+            if (selection.w > 10) { ocrSelectionBtn.style.display = 'block'; runOcrOnSelection(); }
         };
 
         cropCanvas.addEventListener('mousedown', startDraw);
@@ -175,53 +161,41 @@
         function runOcrOnSelection() {
             if (!sourceImg) return;
             const scale = sourceImg.width / cropCanvas.width;
-            rawCropCanvas.width = selection.w * scale;
-            rawCropCanvas.height = selection.h * scale;
+            rawCropCanvas.width = selection.w * scale; rawCropCanvas.height = selection.h * scale;
             rawCropCanvas.getContext('2d').drawImage(sourceImg, selection.x * scale, selection.y * scale, selection.w * scale, selection.h * scale, 0, 0, rawCropCanvas.width, rawCropCanvas.height);
             processImageAndOCR();
         }
 
         ocrSelectionBtn.onclick = runOcrOnSelection;
 
-        // --- KAMERA LOGIKA ---
         captureBtn.onclick = async () => {
             if (!video.videoWidth) return;
             isFrozen = true; isGalleryMode = false;
             const z = parseFloat(zoomSlider.value);
-            
             freezeLayer.width = 600; freezeLayer.height = 600;
             freezeLayer.getContext('2d').drawImage(video, 0, 0, 600, 600);
             freezeLayer.style.display = 'block'; video.style.visibility = 'hidden';
-            
             const sw = (video.videoWidth / z) * 0.8; const sh = (video.videoHeight / z) * 0.15;
             const sx = (video.videoWidth - sw) / 2; const sy = (video.videoHeight - sh) / 2;
             rawCropCanvas.width = sw * 2; rawCropCanvas.height = sh * 2;
             rawCropCanvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, rawCropCanvas.width, rawCropCanvas.height);
-            
-            resetBtn.style.display = 'block';
-            captureBtn.style.display = 'none';
+            resetBtn.style.display = 'block'; captureBtn.style.display = 'none';
             processImageAndOCR();
         };
 
-        // --- OCR JÁDRO ---
         async function processImageAndOCR() {
+            debugBox.style.display = 'block';
             statusDisp.innerText = "⏳ ANALÝZA TEXTU...";
             const ocrCtx = ocrCanvas.getContext('2d');
             ocrCanvas.width = rawCropCanvas.width; ocrCanvas.height = rawCropCanvas.height;
             let imgData = rawCropCanvas.getContext('2d').getImageData(0, 0, rawCropCanvas.width, rawCropCanvas.height);
             let d = imgData.data;
-            
             let totalB = 0; for (let i = 0; i < d.length; i += 4) totalB += (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11);
             let avgB = totalB / (d.length / 4);
             let thresh = (thresholdSlider.value == 128) ? avgB : thresholdSlider.value;
             if(thresholdSlider.value == 128) document.getElementById('threshold-val').innerText = "Auto (" + Math.round(avgB) + ")";
-            
-            for (let i = 0; i < d.length; i += 4) {
-                let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > thresh) ? 255 : 0;
-                d[i] = d[i+1] = d[i+2] = v;
-            }
+            for (let i = 0; i < d.length; i += 4) { let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > thresh) ? 255 : 0; d[i] = d[i+1] = d[i+2] = v; }
             ocrCtx.putImageData(imgData, 0, 0);
-
             try {
                 const result = await Tesseract.recognize(ocrCanvas, 'eng', { tessedit_char_whitelist: '0123456789., ' });
                 const text = result.data.text.trim();
@@ -239,41 +213,31 @@
                 statusDisp.innerText = "✅ SOUŘADNICE NALEZENY";
                 mapBtnContainer.innerHTML = `<a href="https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=15&source=coor&id=${lon}%2C${lat}" target="_blank" class="map-link">OTEVŘÍT V MAPY.CZ</a>`;
                 saveToHistory(lat, lon);
-            } else {
-                statusDisp.innerText = "❓ SOUŘADNICE NENALEZENY";
-                mapBtnContainer.innerHTML = "";
-            }
+            } else { statusDisp.innerText = "❓ SOUŘADNICE NENALEZENY"; mapBtnContainer.innerHTML = ""; }
         }
 
-        // --- HISTORIE ---
         function saveToHistory(lat, lon) {
-            history = history.filter(h => h.lat !== lat);
-            history.unshift({ lat, lon });
+            history = history.filter(h => h.lat !== lat); history.unshift({ lat, lon });
             if (history.length > 3) history.pop();
-            localStorage.setItem('gps_history', JSON.stringify(history));
-            renderHistory();
+            localStorage.setItem('gps_history', JSON.stringify(history)); renderHistory();
         }
 
         function renderHistory() {
             const list = document.getElementById('history-list');
             list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">POSLEDNÍ ÚSPĚŠNÉ:</div>' : '';
             history.forEach(h => {
-                const item = document.createElement('div');
-                item.className = 'history-item';
+                const item = document.createElement('div'); item.className = 'history-item';
                 item.innerHTML = `<span>${h.lat}, ${h.lon}</span><a href="https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=15&source=coor&id=${h.lon}%2C${h.lat}" target="_blank" style="color:#4a90e2; text-decoration:none; font-weight:bold">MAPA</a>`;
                 list.appendChild(item);
             });
         }
 
-        // --- OVLÁDÁNÍ ---
         resetBtn.onclick = () => {
             isFrozen = false; isGalleryMode = false; sourceImg = null;
-            video.style.visibility = 'visible';
-            freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
+            video.style.visibility = 'visible'; freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
             document.getElementById('rect-overlay').style.display = 'block';
-            resetBtn.style.display = 'none'; ocrSelectionBtn.style.display = 'none';
-            captureBtn.style.display = 'block';
-            statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---";
+            resetBtn.style.display = 'none'; ocrSelectionBtn.style.display = 'none'; debugBox.style.display = 'none';
+            captureBtn.style.display = 'block'; statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---";
             mapBtnContainer.innerHTML = ""; fileInput.value = "";
             const ctx = cropCanvas.getContext('2d'); ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
         };
@@ -286,9 +250,7 @@
         zoomSlider.oninput = async () => {
             const val = zoomSlider.value; document.getElementById('zoom-val').innerText = val;
             video.style.transform = `scale(${val})`;
-            if (videoTrack && videoTrack.getCapabilities().zoom) {
-                try { await videoTrack.applyConstraints({ advanced: [{ zoom: val }] }); } catch (e) {}
-            }
+            if (videoTrack && videoTrack.getCapabilities().zoom) { try { await videoTrack.applyConstraints({ advanced: [{ zoom: val }] }); } catch (e) {} }
         };
 
         window.onload = initCamera;
