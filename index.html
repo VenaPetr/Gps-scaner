@@ -33,7 +33,11 @@
         #result { margin-top: 10px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; box-sizing: border-box; }
         #output-text { font-size: 15px; color: #00ff00; margin: 8px 0; font-family: monospace; word-break: break-all; background: #000; padding: 5px; min-height: 20px; }
         
-        .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
+        .map-selector { display: flex; justify-content: center; gap: 15px; margin: 10px 0; padding: 8px; background: #1a1a1a; border-radius: 8px; }
+        .map-selector label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: #aaa; margin-bottom: 0; font-weight: bold; }
+        .map-selector input[type="radio"] { accent-color: #ed2127; margin: 0; width: 16px; height: 16px; }
+
+        .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 5px; }
         
         #history-list { width: 100%; max-width: 400px; margin-top: 10px; }
         .history-item { display: flex; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; gap: 10px; }
@@ -45,7 +49,7 @@
 
     <div class="app-header">
         <div class="app-title">GPS Location Finder</div>
-        <div class="app-version">v1.0.6-stable</div>
+        <div class="app-version">v1.0.8-stable</div>
     </div>
 
     <div id="viewer-container">
@@ -78,6 +82,12 @@
     <div id="result">
         <div id="status" style="font-size: 12px; color: #888;">PŘIPRAVENO</div>
         <div id="output-text">---</div>
+        
+        <div class="map-selector">
+            <label><input type="radio" name="map-provider" value="mapycz"> Mapy.cz</label>
+            <label><input type="radio" name="map-provider" value="google"> Google Maps</label>
+        </div>
+
         <div id="map-button-container"></div>
     </div>
 
@@ -93,8 +103,13 @@
 
         let videoTrack = null, isFrozen = false, isGalleryMode = false, isDrawing = false, sourceImg = null, startX, startY, selection = { x: 0, y: 0, w: 0, h: 0 };
         let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
+        let lastLat = null, lastLon = null;
 
         async function initCamera() {
+            // Načtení preferované mapy
+            const savedProvider = localStorage.getItem('map_provider') || 'mapycz';
+            document.querySelector(`input[name="map-provider"][value="${savedProvider}"]`).checked = true;
+
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } });
                 video.srcObject = stream; videoTrack = stream.getVideoTracks()[0];
@@ -209,7 +224,10 @@
                 const simpleMatches = text.match(simpleRegex);
                 if (simpleMatches && simpleMatches.length >= 2) { fLat = simpleMatches[0].replace(',', '.'); fLon = simpleMatches[1].replace(',', '.'); }
             }
-            if (fLat && fLon) displayResult(fLat, fLon, "✅ ZPRACOVÁNO");
+            if (fLat && fLon) {
+                lastLat = fLat; lastLon = fLon;
+                displayResult(fLat, fLon, "✅ ZPRACOVÁNO");
+            }
             else statusDisp.innerText = "❓ NEROZPOZNÁNO";
         }
 
@@ -227,17 +245,37 @@
             return { val: decimal.toFixed(6), type: type };
         }
 
-        function displayResult(lat, lon, msg) {
-            statusDisp.innerText = msg;
-            const mapUrl = `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}`;
-            // Upraveno: saveToHistory se volá až při kliknutí na odkaz
-            mapBtnContainer.innerHTML = `<a href="${mapUrl}" target="_blank" class="map-link" onclick="saveToHistory('${lat}', '${lon}')">ZOBRAZIT BOD NA MAPĚ</a>`;
+        function generateMapUrl(lat, lon) {
+            const provider = document.querySelector('input[name="map-provider"]:checked').value;
+            if (provider === "mapycz") {
+                return `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}`;
+            } else {
+                return `https://www.google.com/maps?q=${lat},${lon}`;
+            }
         }
 
+        function displayResult(lat, lon, msg) {
+            statusDisp.innerText = msg;
+            updateMapButton();
+        }
+
+        function updateMapButton() {
+            if (!lastLat || !lastLon) return;
+            const mapUrl = generateMapUrl(lastLat, lastLon);
+            mapBtnContainer.innerHTML = `<a href="${mapUrl}" target="_blank" class="map-link" onclick="saveToHistory('${lastLat}', '${lastLon}')">ZOBRAZIT BOD NA MAPĚ</a>`;
+        }
+
+        // Globální změna poskytovatele map
+        document.querySelectorAll('input[name="map-provider"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                localStorage.setItem('map_provider', e.target.value);
+                updateMapButton(); // Aktualizuje aktuální tlačítko
+                renderHistory();   // Aktualizuje odkazy v historii
+            });
+        });
+
         function saveToHistory(lat, lon) {
-            // Kontrola duplicity před uložením
             if (history.length > 0 && history[0].lat === lat && history[0].lon === lon) return;
-            
             history = history.filter(h => h.lat !== lat || h.lon !== lon); 
             history.unshift({ lat, lon }); 
             if (history.length > 20) history.pop();
@@ -256,12 +294,12 @@
             list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">POSLEDNÍ SKENY (ULOŽENÉ):</div>' : '';
             history.forEach((h, index) => {
                 const item = document.createElement('div'); item.className = 'history-item';
-                const mapUrl = `https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=16&source=coor&id=${h.lon}%2C${h.lat}`;
+                const mapUrl = generateMapUrl(h.lat, h.lon); // Dynamické URL podle globálního nastavení
                 item.innerHTML = `
                     <div class="history-info">
                         <span style="font-weight:bold; color:#00ff00">${h.lat}, ${h.lon}</span>
                     </div>
-                    <a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-size:10px">MAPA</a>
+                    <a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-size:10px">OTEVŘÍT</a>
                     <span class="delete-btn" onclick="deleteHistoryItem(${index})">🗑</span>
                 `;
                 list.appendChild(item);
@@ -269,7 +307,7 @@
         }
 
         resetBtn.onclick = () => {
-            isFrozen = false; isGalleryMode = false; sourceImg = null;
+            isFrozen = false; isGalleryMode = false; sourceImg = null; lastLat = null; lastLon = null;
             video.style.display = 'block'; freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
             document.getElementById('rect-overlay').style.display = 'block';
             resetBtn.style.display = 'none'; ocrSelectionBtn.style.display = 'none'; debugBox.style.display = 'none';
