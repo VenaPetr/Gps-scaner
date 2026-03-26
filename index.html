@@ -57,7 +57,7 @@
 
     <div class="app-header">
         <div class="app-title">GPS Location Finder</div>
-        <div class="app-version">v1.1.2-stable</div>
+        <div class="app-version">v1.1.5-stable</div>
     </div>
 
     <div id="viewer-container">
@@ -75,9 +75,13 @@
     </div>
 
     <div class="controls">
-        <button id="capture-btn">SKENOVAT KAMEROU</button>
+        <button id="capture-btn">SKENOVAT KAMEROU (LIVE)</button>
         <button id="file-btn" style="background:#444">FOTKA Z GALERIE</button>
         <input type="file" id="file-input" accept="image/*" style="display: none;">
+        
+        <button id="camera-btn" style="background:#555">POŘÍDIT FOTO (APLIKACE)</button>
+        <input type="file" id="camera-input" accept="image/*" capture="environment" style="display: none;">
+
         <button id="ocr-selection-btn">PŘEČÍST VÝBĚR</button>
         <button id="reset-btn">ZPĚT KE KAMERĚ</button>
     </div>
@@ -103,8 +107,8 @@
 
     <div id="distance-tool">
         <div class="tool-buttons">
-            <button id="calc-dist-btn" disabled title="Vypočítá vzdálenost mezi body">VYPOČÍTAT VZDÁLENOST</button>
-            <button id="route-btn" disabled title="Pouze pro Google Maps">ZOBRAZIT TRASU (GOOGLE)</button>
+            <button id="calc-dist-btn" disabled>VYPOČÍTAT VZDÁLENOST</button>
+            <button id="route-btn" disabled>ZOBRAZIT TRASU (GOOGLE)</button>
         </div>
         <div id="distance-result">---</div>
     </div>
@@ -114,7 +118,9 @@
     <script>
         const video = document.getElementById('video'), freezeLayer = document.getElementById('freeze-layer'), cropCanvas = document.getElementById('crop-canvas');
         const rawCropCanvas = document.getElementById('raw-crop-canvas'), ocrCanvas = document.getElementById('ocr-canvas'), debugBox = document.getElementById('debug-box');
-        const fileInput = document.getElementById('file-input'), captureBtn = document.getElementById('capture-btn'), fileBtn = document.getElementById('file-btn'), resetBtn = document.getElementById('reset-btn'), ocrSelectionBtn = document.getElementById('ocr-selection-btn');
+        const fileInput = document.getElementById('file-input'), cameraInput = document.getElementById('camera-input');
+        const captureBtn = document.getElementById('capture-btn'), fileBtn = document.getElementById('file-btn'), cameraBtn = document.getElementById('camera-btn');
+        const resetBtn = document.getElementById('reset-btn'), ocrSelectionBtn = document.getElementById('ocr-selection-btn');
         const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text'), mapBtnContainer = document.getElementById('map-button-container');
         const calcDistBtn = document.getElementById('calc-dist-btn'), routeBtn = document.getElementById('route-btn'), distanceResult = document.getElementById('distance-result');
 
@@ -125,7 +131,6 @@
         async function initCamera() {
             const savedProvider = localStorage.getItem('map_provider') || 'mapycz';
             document.querySelector(`input[name="map-provider"][value="${savedProvider}"]`).checked = true;
-
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } });
                 video.srcObject = stream; videoTrack = stream.getVideoTracks()[0];
@@ -133,9 +138,8 @@
             } catch (err) { statusDisp.innerText = "CHYBA KAMERY"; }
         }
 
-        // --- OCR & Capture ---
-        fileBtn.onclick = () => fileInput.click();
-        fileInput.onchange = (e) => {
+        // --- Společná logika pro nahrání souboru (Galerie i Fotoaparát) ---
+        function handleImageUpload(e) {
             const file = e.target.files[0]; if (!file) return;
             const reader = new FileReader();
             reader.onload = (ev) => {
@@ -148,13 +152,20 @@
                     freezeLayer.height = cropCanvas.height = 1000 * aspect;
                     freezeLayer.getContext('2d').drawImage(img, 0, 0, freezeLayer.width, freezeLayer.height);
                     freezeLayer.style.display = 'block'; cropCanvas.style.display = 'block';
-                    resetBtn.style.display = 'block'; captureBtn.style.display = 'none';
+                    resetBtn.style.display = 'block'; captureBtn.style.display = 'none'; fileBtn.style.display = 'none'; cameraBtn.style.display = 'none';
+                    statusDisp.innerText = "VYBERTE TEXT RÁMEČKEM";
                 };
                 img.src = ev.target.result;
             };
             reader.readAsDataURL(file);
-        };
+        }
 
+        fileBtn.onclick = () => fileInput.click();
+        cameraBtn.onclick = () => cameraInput.click();
+        fileInput.onchange = handleImageUpload;
+        cameraInput.onchange = handleImageUpload;
+
+        // --- Ostatní logika (OCR, Mapy, Výpočty) zůstává stejná ---
         const startDraw = (e) => { if(!isGalleryMode) return; isDrawing = true; const p = getMousePos(cropCanvas, e); startX = p.x; startY = p.y; };
         const doDraw = (e) => {
             if (!isDrawing) return;
@@ -202,7 +213,7 @@
             const sx = (video.videoWidth - sw) / 2, sy = (video.videoHeight - sh) / 2;
             rawCropCanvas.width = sw * 2; rawCropCanvas.height = sh * 2;
             rawCropCanvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, rawCropCanvas.width, rawCropCanvas.height);
-            resetBtn.style.display = 'block'; captureBtn.style.display = 'none';
+            resetBtn.style.display = 'block'; captureBtn.style.display = 'none'; fileBtn.style.display = 'none'; cameraBtn.style.display = 'none';
             processImageAndOCR();
         };
 
@@ -257,7 +268,6 @@
             return { val: decimal.toFixed(6), type: type };
         }
 
-        // --- Mapy & Historie ---
         function generateMapUrl(lat, lon) {
             const provider = document.querySelector('input[name="map-provider"]:checked').value;
             return provider === "mapycz" 
@@ -317,23 +327,11 @@
             toggleToolButtons();
         }
 
-        // --- Nástroje ---
         function toggleToolButtons() {
             const checked = document.querySelectorAll('.history-checkbox:checked');
             const provider = document.querySelector('input[name="map-provider"]:checked').value;
-            
             calcDistBtn.disabled = checked.length < 2;
             routeBtn.disabled = (checked.length < 2 || provider !== 'google');
-        }
-
-        function getHaversineDistance(coords1, coords2) {
-            const R = 6371e3;
-            const φ1 = coords1.lat * Math.PI/180;
-            const φ2 = coords2.lat * Math.PI/180;
-            const Δφ = (coords2.lat - coords1.lat) * Math.PI/180;
-            const Δλ = (coords2.lon - coords1.lon) * Math.PI/180;
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
 
         calcDistBtn.onclick = () => {
@@ -342,7 +340,6 @@
                 const h = history[cb.getAttribute('data-index')];
                 return { lat: parseFloat(h.lat), lon: parseFloat(h.lon) };
             });
-
             let maxDist = 0;
             for (let i = 0; i < selectedCoords.length; i++) {
                 for (let j = i + 1; j < selectedCoords.length; j++) {
@@ -354,22 +351,24 @@
             distanceResult.innerText = "Max vzdálenost: " + resultStr;
         };
 
+        function getHaversineDistance(c1, c2) {
+            const R = 6371e3;
+            const φ1 = c1.lat * Math.PI/180, φ2 = c2.lat * Math.PI/180;
+            const Δφ = (c2.lat - c1.lat) * Math.PI/180, Δλ = (c2.lon - c1.lon) * Math.PI/180;
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
         routeBtn.onclick = () => {
             const checkedBoxes = document.querySelectorAll('.history-checkbox:checked');
             const points = Array.from(checkedBoxes).map(cb => {
                 const h = history[cb.getAttribute('data-index')];
                 return `${h.lat},${h.lon}`;
             });
-
             if (points.length < 2) return;
-
-            const origin = points[0];
-            const destination = points[points.length - 1];
-            const waypoints = points.slice(1, -1).join('|');
-            
-            let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
+            const origin = points[0], destination = points[points.length - 1], waypoints = points.slice(1, -1).join('|');
+            let url = `http://googleusercontent.com/maps.google.com/4{origin}&destination=${destination}`;
             if (waypoints) url += `&waypoints=${waypoints}`;
-            
             window.open(url, '_blank');
         };
 
@@ -378,8 +377,9 @@
             video.style.display = 'block'; freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
             document.getElementById('rect-overlay').style.display = 'block';
             resetBtn.style.display = 'none'; ocrSelectionBtn.style.display = 'none'; debugBox.style.display = 'none';
-            captureBtn.style.display = 'block'; statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---";
-            mapBtnContainer.innerHTML = ""; document.getElementById('file-input').value = "";
+            captureBtn.style.display = 'block'; fileBtn.style.display = 'block'; cameraBtn.style.display = 'block';
+            statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---";
+            mapBtnContainer.innerHTML = ""; fileInput.value = ""; cameraInput.value = "";
             distanceResult.innerText = "---";
             const ctx = cropCanvas.getContext('2d'); ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
         };
