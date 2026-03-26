@@ -24,7 +24,7 @@
         
         .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; }
         button { width: 100%; padding: 16px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; }
-        button:disabled { background: #444; color: #888; cursor: not-allowed; }
+        button:disabled { background: #444 !important; color: #888 !important; cursor: not-allowed; border: 1px solid #333; }
         #ocr-selection-btn { background: #28a745; display: none; }
         #reset-btn { background: #555; display: none; }
         
@@ -46,15 +46,18 @@
         .history-checkbox { width: 18px; height: 18px; accent-color: #ed2127; }
         .delete-btn { color: #ed2127; cursor: pointer; font-size: 18px; padding: 2px 5px; }
 
-        #distance-tool { width: 100%; max-width: 400px; margin-top: 15px; padding: 15px; background: #1a1a1a; border-radius: 10px; box-sizing: border-box; text-align: center; border: 1px solid #ed212733; }
-        #distance-result { margin-top: 10px; font-weight: bold; color: #00ff00; font-size: 18px; }
+        #distance-tool { width: 100%; max-width: 400px; margin-top: 15px; padding: 15px; background: #1a1a1a; border-radius: 10px; box-sizing: border-box; border: 1px solid #ed212733; }
+        .tool-buttons { display: flex; gap: 8px; margin-bottom: 10px; }
+        .tool-buttons button { padding: 12px 8px; font-size: 12px; flex: 1; }
+        #route-btn { background: #34a853; }
+        #distance-result { text-align: center; font-weight: bold; color: #00ff00; font-size: 16px; }
     </style>
 </head>
 <body>
 
     <div class="app-header">
         <div class="app-title">GPS Location Finder</div>
-        <div class="app-version">v1.1.0-stable</div>
+        <div class="app-version">v1.1.2-stable</div>
     </div>
 
     <div id="viewer-container">
@@ -99,8 +102,11 @@
     <div id="history-list"></div>
 
     <div id="distance-tool">
-        <button id="calc-dist-btn" disabled>VYPOČÍTAT VZDÁLENOST</button>
-        <div id="distance-result">--- m</div>
+        <div class="tool-buttons">
+            <button id="calc-dist-btn" disabled title="Vypočítá vzdálenost mezi body">VYPOČÍTAT VZDÁLENOST</button>
+            <button id="route-btn" disabled title="Pouze pro Google Maps">ZOBRAZIT TRASU (GOOGLE)</button>
+        </div>
+        <div id="distance-result">---</div>
     </div>
 
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
@@ -110,7 +116,7 @@
         const rawCropCanvas = document.getElementById('raw-crop-canvas'), ocrCanvas = document.getElementById('ocr-canvas'), debugBox = document.getElementById('debug-box');
         const fileInput = document.getElementById('file-input'), captureBtn = document.getElementById('capture-btn'), fileBtn = document.getElementById('file-btn'), resetBtn = document.getElementById('reset-btn'), ocrSelectionBtn = document.getElementById('ocr-selection-btn');
         const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text'), mapBtnContainer = document.getElementById('map-button-container');
-        const calcDistBtn = document.getElementById('calc-dist-btn'), distanceResult = document.getElementById('distance-result');
+        const calcDistBtn = document.getElementById('calc-dist-btn'), routeBtn = document.getElementById('route-btn'), distanceResult = document.getElementById('distance-result');
 
         let videoTrack = null, isFrozen = false, isGalleryMode = false, isDrawing = false, sourceImg = null, startX, startY, selection = { x: 0, y: 0, w: 0, h: 0 };
         let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
@@ -127,7 +133,7 @@
             } catch (err) { statusDisp.innerText = "CHYBA KAMERY"; }
         }
 
-        // --- OCR & Capture Logika ---
+        // --- OCR & Capture ---
         fileBtn.onclick = () => fileInput.click();
         fileInput.onchange = (e) => {
             const file = e.target.files[0]; if (!file) return;
@@ -299,7 +305,7 @@
                 const item = document.createElement('div'); item.className = 'history-item';
                 const mapUrl = generateMapUrl(h.lat, h.lon);
                 item.innerHTML = `
-                    <input type="checkbox" class="history-checkbox" data-index="${index}" onchange="toggleCalcButton()">
+                    <input type="checkbox" class="history-checkbox" data-index="${index}" onchange="toggleToolButtons()">
                     <div class="history-info">
                         <span style="font-weight:bold; color:#00ff00">${h.lat}, ${h.lon}</span>
                     </div>
@@ -308,27 +314,26 @@
                 `;
                 list.appendChild(item);
             });
-            toggleCalcButton();
+            toggleToolButtons();
         }
 
-        // --- Nástroj pro výpočet vzdálenosti ---
-        function toggleCalcButton() {
+        // --- Nástroje ---
+        function toggleToolButtons() {
             const checked = document.querySelectorAll('.history-checkbox:checked');
+            const provider = document.querySelector('input[name="map-provider"]:checked').value;
+            
             calcDistBtn.disabled = checked.length < 2;
+            routeBtn.disabled = (checked.length < 2 || provider !== 'google');
         }
 
         function getHaversineDistance(coords1, coords2) {
-            const R = 6371e3; // Poloměr Země v metrech
+            const R = 6371e3;
             const φ1 = coords1.lat * Math.PI/180;
             const φ2 = coords2.lat * Math.PI/180;
             const Δφ = (coords2.lat - coords1.lat) * Math.PI/180;
             const Δλ = (coords2.lon - coords1.lon) * Math.PI/180;
-
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                      Math.cos(φ1) * Math.cos(φ2) *
-                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
 
         calcDistBtn.onclick = () => {
@@ -339,22 +344,33 @@
             });
 
             let maxDist = 0;
-            if (selectedCoords.length === 2) {
-                maxDist = getHaversineDistance(selectedCoords[0], selectedCoords[1]);
-            } else {
-                // Najít nejvzdálenější body mezi všemi vybranými
-                for (let i = 0; i < selectedCoords.length; i++) {
-                    for (let j = i + 1; j < selectedCoords.length; j++) {
-                        const d = getHaversineDistance(selectedCoords[i], selectedCoords[j]);
-                        if (d > maxDist) maxDist = d;
-                    }
+            for (let i = 0; i < selectedCoords.length; i++) {
+                for (let j = i + 1; j < selectedCoords.length; j++) {
+                    const d = getHaversineDistance(selectedCoords[i], selectedCoords[j]);
+                    if (d > maxDist) maxDist = d;
                 }
             }
+            const resultStr = maxDist > 1000 ? (maxDist / 1000).toFixed(3) + " km" : Math.round(maxDist) + " m";
+            distanceResult.innerText = "Max vzdálenost: " + resultStr;
+        };
 
-            const resultStr = maxDist > 1000 
-                ? (maxDist / 1000).toFixed(3) + " km" 
-                : Math.round(maxDist) + " m";
-            distanceResult.innerText = resultStr;
+        routeBtn.onclick = () => {
+            const checkedBoxes = document.querySelectorAll('.history-checkbox:checked');
+            const points = Array.from(checkedBoxes).map(cb => {
+                const h = history[cb.getAttribute('data-index')];
+                return `${h.lat},${h.lon}`;
+            });
+
+            if (points.length < 2) return;
+
+            const origin = points[0];
+            const destination = points[points.length - 1];
+            const waypoints = points.slice(1, -1).join('|');
+            
+            let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
+            if (waypoints) url += `&waypoints=${waypoints}`;
+            
+            window.open(url, '_blank');
         };
 
         resetBtn.onclick = () => {
@@ -364,6 +380,7 @@
             resetBtn.style.display = 'none'; ocrSelectionBtn.style.display = 'none'; debugBox.style.display = 'none';
             captureBtn.style.display = 'block'; statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---";
             mapBtnContainer.innerHTML = ""; document.getElementById('file-input').value = "";
+            distanceResult.innerText = "---";
             const ctx = cropCanvas.getContext('2d'); ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
         };
 
