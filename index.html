@@ -3,63 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Finder Pro</title>
+    <title>GPS Finder Ultimate</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: none; overflow: hidden; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
         
-        /* Header & Info */
-        .app-header { width: 100%; max-width: 400px; display: flex; justify-content: space-between; margin-bottom: 5px; }
-        .app-title { font-size: 12px; font-weight: bold; color: #ed2127; text-transform: uppercase; }
+        .app-header { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 5px; padding: 0 5px; }
+        .app-title { font-size: 12px; font-weight: bold; color: #ed2127; text-transform: uppercase; letter-spacing: 1px; }
+        .app-version { font-size: 10px; color: #666; }
 
-        /* Hlavní kontejner pro zobrazení */
-        #viewer-container { 
-            position: relative; 
-            width: 100%; 
-            max-width: 400px; 
-            aspect-ratio: 1/1;
-            border: 2px solid #ed2127; 
-            border-radius: 15px; 
-            overflow: hidden; 
-            background: #000; 
-            touch-action: none;
-        }
-        video, #freeze-layer, #crop-canvas { 
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            display: block;
-        }
-        #freeze-layer { display: none; }
+        #viewer-container { position: relative; width: 100%; max-width: 400px; aspect-ratio: 1/1; border: 2px solid #ed2127; border-radius: 15px; overflow: hidden; background: #000; touch-action: none; }
+        video, #freeze-layer, #crop-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; object-fit: cover; }
+        #freeze-layer { display: none; object-fit: contain; }
         #crop-canvas { z-index: 20; display: none; }
         
-        /* Overlay pro LIVE režim */
-        .overlay { 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-            width: 80%; height: 15%; border: 2px solid #00ff00; 
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); z-index: 10; pointer-events: none; 
-        }
+        .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 15%; border: 2px solid #00ff00; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); z-index: 10; pointer-events: none; }
         
-        /* Ovládací prvky */
         .settings-box { width: 100%; max-width: 400px; margin: 10px 0; background: #222; padding: 10px; border-radius: 10px; box-sizing: border-box; }
-        input[type=range] { width: 100%; accent-color: #ed2127; }
+        label { font-size: 11px; color: #888; display: block; margin-bottom: 5px; }
+        input[type=range] { width: 100%; accent-color: #ed2127; margin-bottom: 10px; }
         
         .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; }
-        button { width: 100%; padding: 14px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; }
-        #reset-btn { background: #555; display: none; }
+        button { width: 100%; padding: 16px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; }
+        button:disabled { background: #444 !important; color: #888 !important; cursor: not-allowed; border: 1px solid #333; }
         #ocr-selection-btn { background: #28a745; display: none; }
-
-        #result { margin-top: 10px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; }
-        #output-text { font-size: 15px; color: #00ff00; margin: 8px 0; font-family: monospace; background: #000; padding: 5px; min-height: 20px; }
+        #reset-btn { background: #555; display: none; }
         
+        #result { margin-top: 10px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; box-sizing: border-box; }
+        #output-text { font-size: 15px; color: #00ff00; margin: 8px 0; font-family: monospace; word-break: break-all; background: #000; padding: 5px; min-height: 20px; }
+        
+        .map-selector { display: flex; justify-content: center; gap: 15px; margin: 10px 0; padding: 8px; background: #1a1a1a; border-radius: 8px; }
+        .map-selector label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: #aaa; margin-bottom: 0; font-weight: bold; font-size: 12px; }
+
         .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 5px; }
+        
+        #history-list { width: 100%; max-width: 400px; margin-top: 10px; }
+        .history-item { display: flex; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; gap: 10px; }
+        .history-info { flex-grow: 1; display: flex; flex-direction: column; }
+        .history-checkbox { width: 18px; height: 18px; accent-color: #ed2127; }
+        .delete-btn { color: #ed2127; cursor: pointer; font-size: 18px; padding: 2px 5px; }
+
+        #distance-tool { width: 100%; max-width: 400px; margin-top: 15px; padding: 15px; background: #1a1a1a; border-radius: 10px; box-sizing: border-box; border: 1px solid #ed212733; }
+        .tool-buttons { display: flex; gap: 8px; margin-bottom: 10px; }
+        .tool-buttons button { padding: 12px 8px; font-size: 12px; flex: 1; }
+        #route-btn { background: #34a853; }
+        #distance-result { text-align: center; font-weight: bold; color: #00ff00; font-size: 16px; }
     </style>
 </head>
 <body>
 
     <div class="app-header">
-        <div class="app-title">GPS Location Finder v1.1.9</div>
-        <div id="zoom-info" style="font-size: 10px; color: #666;">LIVE ZOOM: 1.5x</div>
+        <div class="app-title">GPS Location Finder</div>
+        <div class="app-version">v1.2.0-full</div>
     </div>
 
     <div id="viewer-container">
@@ -70,17 +65,15 @@
     </div>
 
     <div class="settings-box">
+        <label>Zoom: <span id="zoom-val">1.5</span>x</label>
         <input type="range" id="zoom-slider" min="1" max="8" step="0.1" value="1.5">
-        <div style="display:flex; justify-content: space-between; font-size: 10px; color: #888; margin-top: 5px;">
-            <span>THRESHOLD</span>
-            <span id="threshold-val">Auto</span>
-        </div>
-        <input type="range" id="threshold-slider" min="0" max="255" value="128">
+        <label>Threshold: <span id="threshold-val">Auto</span></label>
+        <input type="range" id="threshold-slider" min="0" max="255" step="1" value="128">
     </div>
 
     <div class="controls">
-        <button id="capture-btn">SKENOVAT KAMEROU</button>
-        <button id="file-btn" style="background:#444">FOTKA Z GALERIE / FOTOAPARÁT</button>
+        <button id="capture-btn">SKENOVAT KAMEROU (LIVE)</button>
+        <button id="file-btn" style="background:#444">GALERIE / FOTOAPARÁT</button>
         <input type="file" id="file-input" accept="image/*" style="display: none;">
         
         <button id="ocr-selection-btn">PŘEČÍST VÝBĚR</button>
@@ -90,7 +83,22 @@
     <div id="result">
         <div id="status" style="font-size: 12px; color: #888;">PŘIPRAVENO</div>
         <div id="output-text">---</div>
+        
+        <div class="map-selector">
+            <label><input type="radio" name="map-provider" value="mapycz"> Mapy.cz</label>
+            <label><input type="radio" name="map-provider" value="google"> Google Maps</label>
+        </div>
         <div id="map-button-container"></div>
+    </div>
+
+    <div id="history-list"></div>
+
+    <div id="distance-tool">
+        <div class="tool-buttons">
+            <button id="calc-dist-btn" disabled>VYPOČÍTAT VZDÁLENOST</button>
+            <button id="route-btn" disabled>ZOBRAZIT TRASU (GOOGLE)</button>
+        </div>
+        <div id="distance-result">---</div>
     </div>
 
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
@@ -100,147 +108,218 @@
         const fileInput = document.getElementById('file-input'), captureBtn = document.getElementById('capture-btn'), fileBtn = document.getElementById('file-btn');
         const resetBtn = document.getElementById('reset-btn'), ocrSelectionBtn = document.getElementById('ocr-selection-btn');
         const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text'), mapBtnContainer = document.getElementById('map-button-container');
+        const calcDistBtn = document.getElementById('calc-dist-btn'), routeBtn = document.getElementById('route-btn'), distanceResult = document.getElementById('distance-result');
         const zoomSlider = document.getElementById('zoom-slider'), thresholdSlider = document.getElementById('threshold-slider');
 
         let videoTrack = null, isFrozen = false, sourceImg = null;
-        
-        // Logika ořezového rámečku (relativní souřadnice 0-1)
-        let cropRect = { x: 0.1, y: 0.4, w: 0.8, h: 0.15 };
-        let activeHandle = null; // Kterou část rámečku držíme
+        let cropRect = { x: 0.1, y: 0.4, w: 0.8, h: 0.15 }; // Relativní 0-1
+        let activeHandle = null, lastLat = null, lastLon = null;
+        let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
 
         async function initCamera() {
+            const savedProvider = localStorage.getItem('map_provider') || 'mapycz';
+            document.querySelector(`input[name="map-provider"][value="${savedProvider}"]`).checked = true;
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } });
                 video.srcObject = stream; videoTrack = stream.getVideoTracks()[0];
-                applyZoom();
+                applyZoom(); renderHistory();
             } catch (err) { statusDisp.innerText = "CHYBA KAMERY"; }
         }
 
-        // --- MANIPULACE S RÁMEČKEM ---
+        // --- RENDER RÁMEČKU ---
         function drawCropTool() {
             const ctx = cropCanvas.getContext('2d');
             ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
-            
-            const x = cropRect.x * cropCanvas.width;
-            const y = cropRect.y * cropCanvas.height;
-            const w = cropRect.w * cropCanvas.width;
-            const h = cropRect.h * cropCanvas.height;
-
-            // Ztmavení okolí
+            const x = cropRect.x * cropCanvas.width, y = cropRect.y * cropCanvas.height;
+            const w = cropRect.w * cropCanvas.width, h = cropRect.h * cropCanvas.height;
             ctx.fillStyle = "rgba(0,0,0,0.5)";
-            ctx.fillRect(0,0, cropCanvas.width, y); // nahoře
-            ctx.fillRect(0, y+h, cropCanvas.width, cropCanvas.height - (y+h)); // dole
-            ctx.fillRect(0, y, x, h); // vlevo
-            ctx.fillRect(x+w, y, cropCanvas.width - (x+w), h); // vpravo
-
-            // Zelený rámeček
-            ctx.strokeStyle = "#00ff00";
-            ctx.lineWidth = 3;
-            ctx.strokeRect(x, y, w, h);
-
-            // Úchyty (Handles)
-            ctx.fillStyle = "#00ff00";
-            const handleSize = 15;
-            ctx.fillRect(x - handleSize, y - handleSize, handleSize*2, handleSize*2); // levý horní
-            ctx.fillRect(x + w - handleSize, y + h - handleSize, handleSize*2, handleSize*2); // pravý dolní
+            ctx.fillRect(0,0, cropCanvas.width, y);
+            ctx.fillRect(0, y+h, cropCanvas.width, cropCanvas.height - (y+h));
+            ctx.fillRect(0, y, x, h);
+            ctx.fillRect(x+w, y, cropCanvas.width - (x+w), h);
+            ctx.strokeStyle = "#00ff00"; ctx.lineWidth = 3; ctx.strokeRect(x, y, w, h);
+            ctx.fillStyle = "#00ff00"; const s = 15;
+            ctx.fillRect(x-s, y-s, s*2, s*2); ctx.fillRect(x+w-s, y+h-s, s*2, s*2);
         }
 
         function getTouchPos(e) {
             const rect = cropCanvas.getBoundingClientRect();
             const touch = e.touches ? e.touches[0] : e;
-            return {
-                x: (touch.clientX - rect.left) / rect.width,
-                y: (touch.clientY - rect.top) / rect.height
-            };
+            return { x: (touch.clientX - rect.left) / rect.width, y: (touch.clientY - rect.top) / rect.height };
         }
 
         cropCanvas.addEventListener('touchstart', (e) => {
-            const pos = getTouchPos(e);
-            const margin = 0.05;
-            // Detekce rohů
-            if (Math.abs(pos.x - cropRect.x) < margin && Math.abs(pos.y - cropRect.y) < margin) activeHandle = 'tl';
-            else if (Math.abs(pos.x - (cropRect.x + cropRect.w)) < margin && Math.abs(pos.y - (cropRect.y + cropRect.h)) < margin) activeHandle = 'br';
-            // Detekce vnitřku (posun celého rámečku)
-            else if (pos.x > cropRect.x && pos.x < cropRect.x + cropRect.w && pos.y > cropRect.y && pos.y < cropRect.y + cropRect.h) activeHandle = 'move';
+            if(!isFrozen) return;
+            const p = getTouchPos(e); const m = 0.06;
+            if (Math.abs(p.x - cropRect.x) < m && Math.abs(p.y - cropRect.y) < m) activeHandle = 'tl';
+            else if (Math.abs(p.x - (cropRect.x+cropRect.w)) < m && Math.abs(p.y - (cropRect.y+cropRect.h)) < m) activeHandle = 'br';
+            else if (p.x > cropRect.x && p.x < cropRect.x+cropRect.w && p.y > cropRect.y && p.y < cropRect.y+cropRect.h) activeHandle = 'move';
         });
 
         cropCanvas.addEventListener('touchmove', (e) => {
-            if (!activeHandle) return;
-            e.preventDefault();
-            const pos = getTouchPos(e);
-
-            if (activeHandle === 'tl') {
-                const dw = cropRect.x - pos.x;
-                const dh = cropRect.y - pos.y;
-                cropRect.x = pos.x; cropRect.y = pos.y;
-                cropRect.w += dw; cropRect.h += dh;
-            } else if (activeHandle === 'br') {
-                cropRect.w = pos.x - cropRect.x;
-                cropRect.h = pos.y - cropRect.y;
-            }
+            if (!activeHandle) return; e.preventDefault();
+            const p = getTouchPos(e);
+            if (activeHandle === 'tl') { cropRect.w += (cropRect.x - p.x); cropRect.h += (cropRect.y - p.y); cropRect.x = p.x; cropRect.y = p.y; }
+            else if (activeHandle === 'br') { cropRect.w = p.x - cropRect.x; cropRect.h = p.y - cropRect.y; }
+            else if (activeHandle === 'move') { cropRect.x = p.x - cropRect.w/2; cropRect.y = p.y - cropRect.h/2; }
             drawCropTool();
         });
-
         window.addEventListener('touchend', () => activeHandle = null);
 
-        // --- LOGIKA SKENOVÁNÍ ---
+        // --- OCR & GPS LOGIKA ---
+        function parseCoordinates(text) {
+            const coordRegex = /([NSNSEWnsewVZvz]?\s*\d{1,3}[°\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[NSNSEWnsewVZvz]?)/gi;
+            const matches = text.match(coordRegex);
+            let fLat = null, fLon = null;
+            if (matches && matches.length >= 2) {
+                const c1 = convertToDecimal(matches[0]), c2 = convertToDecimal(matches[1]);
+                if (c1.type === 'lon' || c2.type === 'lat') { fLat = c2.val; fLon = c1.val; } else { fLat = c1.val; fLon = c2.val; }
+            } else {
+                const simpleRegex = /([0-9]{2,3}[.,][0-9]{3,})/g;
+                const simpleMatches = text.match(simpleRegex);
+                if (simpleMatches && simpleMatches.length >= 2) { fLat = simpleMatches[0].replace(',', '.'); fLon = simpleMatches[1].replace(',', '.'); }
+            }
+            if (fLat && fLon) { lastLat = fLat; lastLon = fLon; statusDisp.innerText = "✅ ZPRACOVÁNO"; updateMapButton(); }
+            else statusDisp.innerText = "❓ NEROZPOZNÁNO";
+        }
+
+        function convertToDecimal(s) {
+            const n = s.match(/(\d+(\.\d+)?)/g); if (!n) return { val: null, type: 'unknown' };
+            let d = parseFloat(n[0]) + (n[1] ? n[1]/60 : 0) + (n[2] ? n[2]/3600 : 0);
+            let t = /[NSns]/.test(s) ? 'lat' : (/[EWewVZvz]/.test(s) ? 'lon' : 'unknown');
+            if (/[SWswZz]/.test(s)) d = -d; return { val: d.toFixed(6), type: t };
+        }
+
+        function generateMapUrl(lat, lon) {
+            const p = document.querySelector('input[name="map-provider"]:checked').value;
+            return p === "mapycz" ? `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}` : `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+        }
+
+        async function processOCR() {
+            statusDisp.innerText = "⏳ ČTU...";
+            const canvas = document.getElementById('raw-crop-canvas');
+            const ctx = canvas.getContext('2d');
+            const sw = cropRect.w * sourceImg.width, sh = cropRect.h * sourceImg.height;
+            canvas.width = sw; canvas.height = sh;
+            ctx.drawImage(sourceImg, cropRect.x * sourceImg.width, cropRect.y * sourceImg.height, sw, sh, 0, 0, sw, sh);
+            
+            // Jednoduchý threshold pro lepší čtení
+            let imgData = ctx.getImageData(0,0,sw,sh); let d = imgData.data;
+            let thr = thresholdSlider.value == 128 ? 128 : thresholdSlider.value;
+            for(let i=0; i<d.length; i+=4) { let v = (d[i]+d[i+1]+d[i+2])/3 > thr ? 255 : 0; d[i]=d[i+1]=d[i+2]=v; }
+            ctx.putImageData(imgData, 0, 0);
+
+            try {
+                const res = await Tesseract.recognize(canvas, 'eng');
+                outputText.innerText = res.data.text.trim();
+                parseCoordinates(res.data.text);
+            } catch(e) { statusDisp.innerText = "CHYBA OCR"; }
+        }
+
+        // --- OVLÁDÁNÍ ---
+        captureBtn.onclick = () => {
+            isFrozen = true; video.style.display = 'none'; freezeLayer.style.display = 'block';
+            cropCanvas.style.display = 'block'; cropCanvas.width = 1000; cropCanvas.height = 1000;
+            const ctx = freezeLayer.getContext('2d');
+            freezeLayer.width = video.videoWidth; freezeLayer.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            sourceImg = freezeLayer; 
+            drawCropTool();
+            captureBtn.style.display = 'none'; fileBtn.style.display = 'none';
+            resetBtn.style.display = 'block'; ocrSelectionBtn.style.display = 'block';
+        };
+
         fileBtn.onclick = () => fileInput.click();
         fileInput.onchange = (e) => {
-            const file = e.target.files[0]; if (!file) return;
+            const file = e.target.files[0]; if(!file) return;
             const reader = new FileReader();
             reader.onload = (ev) => {
                 const img = new Image();
                 img.onload = () => {
                     sourceImg = img; isFrozen = true;
-                    video.style.display = 'none'; document.getElementById('rect-overlay').style.display = 'none';
+                    video.style.display = 'none'; freezeLayer.style.display = 'block';
                     freezeLayer.width = 1000; freezeLayer.height = 1000 * (img.height/img.width);
-                    freezeLayer.getContext('2d').drawImage(img, 0, 0, freezeLayer.width, freezeLayer.height);
-                    freezeLayer.style.display = 'block';
-                    cropCanvas.style.display = 'block'; cropCanvas.width = 1000; cropCanvas.height = 1000 * (img.height/img.width);
+                    freezeLayer.getContext('2d').drawImage(img, 0, 0, 1000, freezeLayer.height);
+                    cropCanvas.style.display = 'block'; cropCanvas.width = 1000; cropCanvas.height = freezeLayer.height;
                     drawCropTool();
-                    resetBtn.style.display = 'block'; ocrSelectionBtn.style.display = 'block';
                     captureBtn.style.display = 'none'; fileBtn.style.display = 'none';
+                    resetBtn.style.display = 'block'; ocrSelectionBtn.style.display = 'block';
                 };
                 img.src = ev.target.result;
             };
             reader.readAsDataURL(file);
         };
 
-        ocrSelectionBtn.onclick = async () => {
-            if (!sourceImg) return;
-            statusDisp.innerText = "⏳ ČTU VÝBĚR...";
-            const rawCtx = document.getElementById('raw-crop-canvas').getContext('2d');
-            const sw = cropRect.w * sourceImg.width;
-            const sh = cropRect.h * sourceImg.height;
-            const sx = cropRect.x * sourceImg.width;
-            const sy = cropRect.y * sourceImg.height;
-
-            document.getElementById('raw-crop-canvas').width = sw;
-            document.getElementById('raw-crop-canvas').height = sh;
-            rawCtx.drawImage(sourceImg, sx, sy, sw, sh, 0, 0, sw, sh);
-
-            // OCR proces (zjednodušeno pro ukázku)
-            const result = await Tesseract.recognize(document.getElementById('raw-crop-canvas'), 'eng');
-            outputText.innerText = result.data.text.trim();
-            statusDisp.innerText = "HOTOVO";
-        };
-
-        captureBtn.onclick = () => {
-            // Live sken využije stávající overlay a zoom
-            statusDisp.innerText = "SKENUJI...";
-            // ... (zde zůstává původní logika live skenu)
-        };
+        ocrSelectionBtn.onclick = processOCR;
 
         resetBtn.onclick = () => {
-            location.reload(); // Pro v1.1.9 nejčistší reset stavu
+            isFrozen = false; sourceImg = null; lastLat = null; lastLon = null;
+            video.style.display = 'block'; freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
+            captureBtn.style.display = 'block'; fileBtn.style.display = 'block';
+            resetBtn.style.display = 'none'; ocrSelectionBtn.style.display = 'none';
+            statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---"; mapBtnContainer.innerHTML = "";
+            applyZoom();
         };
 
-        function applyZoom() {
-            const val = zoomSlider.value;
-            video.style.transform = `scale(${val})`;
-            document.getElementById('zoom-info').innerText = `LIVE ZOOM: ${val}x`;
+        // --- POMOCNÉ FUNKCE (HISTORIE, VZDÁLENOST) ---
+        function updateMapButton() {
+            if (!lastLat || !lastLon) return;
+            const url = generateMapUrl(lastLat, lastLon);
+            mapBtnContainer.innerHTML = `<a href="${url}" target="_blank" class="map-link" onclick="saveToHistory('${lastLat}', '${lastLon}')">ZOBRAZIT BOD NA MAPĚ</a>`;
         }
+
+        function saveToHistory(lat, lon) {
+            if (history.length > 0 && history[0].lat === lat && history[0].lon === lon) return;
+            history.unshift({ lat, lon }); if (history.length > 20) history.pop();
+            localStorage.setItem('gps_history', JSON.stringify(history)); renderHistory();
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('history-list');
+            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">POSLEDNÍ SKENY:</div>' : '';
+            history.forEach((h, i) => {
+                const item = document.createElement('div'); item.className = 'history-item';
+                item.innerHTML = `<input type="checkbox" class="history-checkbox" data-index="${i}" onchange="toggleToolButtons()">
+                    <div class="history-info"><b>${h.lat}, ${h.lon}</b></div>
+                    <a href="${generateMapUrl(h.lat, h.lon)}" target="_blank" style="color:#4a90e2; font-size:10px">OTEVŘÍT</a>
+                    <span class="delete-btn" onclick="deleteHistoryItem(${i})">🗑</span>`;
+                list.appendChild(item);
+            });
+            toggleToolButtons();
+        }
+
+        function deleteHistoryItem(i) { history.splice(i, 1); localStorage.setItem('gps_history', JSON.stringify(history)); renderHistory(); }
+
+        function toggleToolButtons() {
+            const c = document.querySelectorAll('.history-checkbox:checked').length;
+            calcDistBtn.disabled = c < 2; routeBtn.disabled = c < 2;
+        }
+
+        calcDistBtn.onclick = () => {
+            const cb = document.querySelectorAll('.history-checkbox:checked');
+            const pts = Array.from(cb).map(el => history[el.dataset.index]);
+            let d = getHaversineDistance(pts[0], pts[1]);
+            distanceResult.innerText = "Vzdálenost: " + (d > 1000 ? (d/1000).toFixed(3) + " km" : Math.round(d) + " m");
+        };
+
+        function getHaversineDistance(p1, p2) {
+            const R = 6371e3, f1 = p1.lat * Math.PI/180, f2 = p2.lat * Math.PI/180;
+            const df = (p2.lat-p1.lat) * Math.PI/180, dl = (p2.lon-p1.lon) * Math.PI/180;
+            const a = Math.sin(df/2)**2 + Math.cos(f1)*Math.cos(f2)*Math.sin(dl/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        routeBtn.onclick = () => {
+            const cb = document.querySelectorAll('.history-checkbox:checked');
+            const pts = Array.from(cb).map(el => history[el.dataset.index]);
+            window.open(`https://www.google.com/maps/dir/?api=1&origin=${pts[0].lat},${pts[0].lon}&destination=${pts[pts.length-1].lat},${pts[pts.length-1].lon}&waypoints=${pts.slice(1,-1).map(p=>p.lat+','+p.lon).join('|')}`, '_blank');
+        };
+
+        function applyZoom() { video.style.transform = `scale(${zoomSlider.value})`; document.getElementById('zoom-val').innerText = zoomSlider.value; }
         zoomSlider.oninput = applyZoom;
+        thresholdSlider.oninput = () => { document.getElementById('threshold-val').innerText = thresholdSlider.value == 128 ? "Auto" : thresholdSlider.value; if(isFrozen) processOCR(); };
+
+        document.querySelectorAll('input[name="map-provider"]').forEach(r => r.onchange = () => { localStorage.setItem('map_provider', r.value); updateMapButton(); renderHistory(); });
 
         window.onload = initCamera;
     </script>
