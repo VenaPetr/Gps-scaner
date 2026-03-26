@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Finder v2.4 - Manual Edit</title>
+    <title>GPS Finder v2.5 - Final Fix</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
@@ -20,24 +20,18 @@
         .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; }
         button { width: 100%; padding: 16px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; }
         button:disabled { background: #444 !important; color: #888 !important; cursor: not-allowed; border: 1px solid #333; }
-        .secondary-btn { background: #444; }
         #reset-btn { background: #555; display: none; }
         .debug-container { margin-top: 10px; padding: 10px; background: #000; border: 1px dashed #444; border-radius: 8px; width: 100%; max-width: 400px; box-sizing: border-box; display: none; }
-        #ocr-canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid #00ff00; }
+        #ocr-canvas { width: 100%; height: auto; border: 1px solid #00ff00; }
         #result { margin-top: 10px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; box-sizing: border-box; }
-        
-        /* Editovatelné pole */
-        #output-text { font-size: 16px; color: #00ff00; margin: 8px 0; font-family: monospace; word-break: break-all; background: #000; padding: 10px; min-height: 25px; border: 1px solid #444; border-radius: 5px; outline: none; }
-        #output-text:focus { border-color: #ed2127; background: #111; }
-        
+        #output-text { font-size: 16px; color: #00ff00; margin: 8px 0; font-family: monospace; background: #000; padding: 10px; min-height: 25px; border: 1px solid #444; border-radius: 5px; outline: none; word-break: break-all; }
         #recalc-btn { background: #2e7d32; font-size: 12px; padding: 8px; margin-bottom: 10px; display: none; width: 100%; }
-        
         .map-selector { display: flex; justify-content: center; gap: 15px; margin: 10px 0; padding: 8px; background: #1a1a1a; border-radius: 8px; }
-        .map-selector label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: #aaa; margin-bottom: 0; font-weight: bold; }
+        .map-selector label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: #aaa; margin-bottom: 0; font-weight: bold; font-size: 12px; }
         .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 5px; }
         #history-list { width: 100%; max-width: 400px; margin-top: 10px; }
         .history-item { display: flex; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; gap: 10px; }
-        .history-checkbox { width: 18px; height: 18px; accent-color: #ed2127; }
+        .history-checkbox { width: 20px; height: 20px; accent-color: #ed2127; }
         #distance-tool { width: 100%; max-width: 400px; margin-top: 15px; padding: 15px; background: #1a1a1a; border-radius: 10px; box-sizing: border-box; border: 1px solid #ed212733; }
         .tool-buttons { display: flex; gap: 8px; margin-bottom: 10px; }
         .tool-buttons button { padding: 12px 8px; font-size: 12px; flex: 1; }
@@ -47,8 +41,8 @@
 <body>
 
     <div class="app-header">
-        <div class="app-title">GPS Finder v2.4</div>
-        <div class="app-version">v2.4-edit</div>
+        <div class="app-title">GPS Finder v2.5</div>
+        <div class="app-version">v2.5-final</div>
     </div>
 
     <div id="viewer-container">
@@ -58,16 +52,16 @@
     </div>
 
     <div class="settings-box">
-        <label>Zoom náhledu: <span id="zoom-val">1.5</span>x</label>
+        <label>Zoom: <span id="zoom-val">1.5</span>x</label>
         <input type="range" id="zoom-slider" min="1" max="8" step="0.1" value="1.5">
-        <label>Threshold (OCR): <span id="threshold-val">Auto</span></label>
+        <label>Threshold: <span id="threshold-val">Auto</span></label>
         <input type="range" id="threshold-slider" min="0" max="255" step="1" value="128">
     </div>
 
     <div class="controls">
         <button id="camera-btn">📸 POŘÍDIT FOTO</button>
         <input type="file" id="camera-input" accept="image/*" capture="environment" style="display: none;">
-        <button id="file-btn" class="secondary-btn">📂 GALERIE</button>
+        <button id="file-btn" style="background:#444">📂 GALERIE</button>
         <input type="file" id="file-input" accept="image/*" style="display: none;">
         <button id="reset-btn">🔄 NOVÝ SNÍMEK</button>
     </div>
@@ -78,7 +72,6 @@
 
     <div id="result">
         <div id="status" style="font-size: 11px; color: #888;">PŘIPRAVENO</div>
-        
         <div id="output-text" contenteditable="true" spellcheck="false">---</div>
         <button id="recalc-btn">PŘEPOČÍTAT UPRAVENÝ TEXT</button>
 
@@ -197,79 +190,87 @@
             try {
                 const result = await Tesseract.recognize(ocrCanvas, 'eng', { tessedit_char_whitelist: '0123456789.,°^"\'NSEWnsewVZvz ' });
                 let text = result.data.text.trim();
-                
-                // AUTOMATICKÁ OPRAVA SYMBOLŮ PŘED ZOBRAZENÍM
-                // Nahradí ^ nebo 7 uprostřed souřadnice symbolem stupně
                 text = text.replace(/(\d+)\^/g, '$1°').replace(/(\d+)7/g, '$1°');
-                
                 outputText.innerText = text || "Nenalezen text";
-                recalcBtn.style.display = 'block'; // Zobrazit tlačítko pro opravu
+                recalcBtn.style.display = 'block';
                 parseCoordinates(text);
             } catch (e) { statusDisp.innerText = "CHYBA OCR"; }
         }
 
-        // Funkce vyvolaná tlačítkem "PŘEPOČÍTAT"
-        recalcBtn.onclick = () => {
-            const editedText = outputText.innerText;
-            parseCoordinates(editedText);
-        };
+        recalcBtn.onclick = () => parseCoordinates(outputText.innerText);
 
         function parseCoordinates(text) {
-            // Regex bere v potaz i ^ nebo 7, pokud by tam zbyly
-            const coordRegex = /([NSNSEWnsewVZvz]?\s*\d{1,3}[°\^7\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[NSNSEWnsewVZvz]?)/gi;
+            // Robustnější regex, který ignoruje divné znaky mezi čísly
+            const coordRegex = /([NS]?[NSEW]?\s*\d{1,3}[°\^7\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[NSNSEW]?)/gi;
             const matches = text.match(coordRegex);
             let fLat, fLon;
+            
             if (matches && matches.length >= 2) {
                 const c1 = convertToDecimal(matches[0]), c2 = convertToDecimal(matches[1]);
                 if (c1.type === 'lon' || c2.type === 'lat') { fLat = c2.val; fLon = c1.val; } else { fLat = c1.val; fLon = c2.val; }
             } else {
-                const simpleMatches = text.match(/([0-9]{2,3}[.,][0-9]{3,})/g);
-                if (simpleMatches && simpleMatches.length >= 2) { fLat = simpleMatches[0].replace(',', '.'); fLon = simpleMatches[1].replace(',', '.'); }
+                const simpleMatches = text.match(/(\d{2,3}\.\d{4,})/g);
+                if (simpleMatches && simpleMatches.length >= 2) { fLat = simpleMatches[0]; fLon = simpleMatches[1]; }
             }
-            if (fLat && fLon) { lastLat = fLat; lastLon = fLon; statusDisp.innerText = "✅ OK (Můžeš upravit text výše)"; updateMapButton(); } 
-            else statusDisp.innerText = "❓ CHYBA FORMÁTU - OPRAV RUČNĚ";
+
+            if (fLat && fLon && !isNaN(fLat) && !isNaN(fLon)) { 
+                lastLat = fLat; lastLon = fLon; 
+                statusDisp.innerText = "✅ OK"; 
+                updateMapButton(); 
+            } else {
+                statusDisp.innerText = "❓ CHYBA - OPRAV RUČNĚ";
+                mapBtnContainer.innerHTML = "";
+            }
         }
 
         function convertToDecimal(s) {
-            s = s.replace(/[\^7]/g, '°'); // Vyčistit pro výpočet
+            s = s.replace(/[\^7]/g, '°');
             const n = s.match(/(\d+(\.\d+)?)/g); if (!n) return { val: null, type: 'unknown' };
             let d = parseFloat(n[0]) + (n[1]?n[1]/60:0) + (n[2]?n[2]/3600:0);
             if (/[SWswZz]/.test(s)) d = -d;
-            return { val: d.toFixed(6), type: /[NSns]/.test(s) ? 'lat' : 'lon' };
+            let type = /[NSns]/.test(s) ? 'lat' : (/[EWewVZvz]/.test(s) ? 'lon' : 'unknown');
+            return { val: d.toFixed(6), type: type };
         }
 
         function updateMapButton() {
             if (!lastLat || !lastLon) return;
-            const p = document.querySelector('input[name="map-provider"]:checked').value;
-            const url = p === "mapycz" ? `https://mapy.cz/zakladni?x=${lastLon}&y=${lastLat}&z=16&source=coor&id=${lastLon}%2C${lastLat}` : `https://www.google.com/maps/search/?api=1&query=${lastLat},${lastLon}`;
+            const provider = document.querySelector('input[name="map-provider"]:checked').value;
+            const url = provider === "mapycz" 
+                ? `https://mapy.cz/zakladni?x=${lastLon}&y=${lastLat}&z=16&source=coor&id=${lastLon}%2C${lastLat}` 
+                : `https://www.google.com/maps?q=${lastLat},${lastLon}`;
             mapBtnContainer.innerHTML = `<a href="${url}" target="_blank" class="map-link" onclick="saveToHistory('${lastLat}', '${lastLon}')">OTEVŘÍT MAPU</a>`;
         }
 
         function saveToHistory(lat, lon) {
             history = history.filter(h => h.lat !== lat || h.lon !== lon);
             history.unshift({ lat, lon }); if (history.length > 20) history.pop();
-            localStorage.setItem('gps_history', JSON.stringify(history)); renderHistory();
+            localStorage.setItem('gps_history', JSON.stringify(history)); 
+            renderHistory();
         }
 
         function renderHistory() {
             const list = document.getElementById('history-list');
-            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">HISTORIE:</div>' : '';
+            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">HISTORIE (Vyber 2 pro vzdálenost):</div>' : '';
             history.forEach((h, i) => {
                 const item = document.createElement('div'); item.className = 'history-item';
                 item.innerHTML = `<input type="checkbox" class="history-checkbox" data-index="${i}" onchange="toggleToolButtons()">
                     <div style="flex-grow:1"><b>${h.lat}, ${h.lon}</b></div>
-                    <span style="color:#ed2127;cursor:pointer" onclick="deleteItem(${i})">🗑</span>`;
+                    <span style="color:#ed2127;cursor:pointer;padding:5px;" onclick="deleteItem(${i})">🗑</span>`;
                 list.appendChild(item);
             });
             toggleToolButtons();
         }
 
         window.deleteItem = (i) => { history.splice(i, 1); localStorage.setItem('gps_history', JSON.stringify(history)); renderHistory(); };
-        function toggleToolButtons() { const c = document.querySelectorAll('.history-checkbox:checked').length >= 2; calcDistBtn.disabled = !c; routeBtn.disabled = !c; }
+        
+        function toggleToolButtons() { 
+            const checked = document.querySelectorAll('.history-checkbox:checked').length;
+            calcDistBtn.disabled = (checked !== 2); 
+            routeBtn.disabled = (checked !== 2); 
+        }
 
         calcDistBtn.onclick = () => {
-            const boxes = document.querySelectorAll('.history-checkbox:checked');
-            const pts = Array.from(boxes).map(cb => history[cb.dataset.index]);
+            const pts = Array.from(document.querySelectorAll('.history-checkbox:checked')).map(cb => history[cb.dataset.index]);
             const R = 6371e3, f1 = pts[0].lat * Math.PI/180, f2 = pts[1].lat * Math.PI/180;
             const df = (pts[1].lat-pts[0].lat)*Math.PI/180, dl = (pts[1].lon-pts[0].lon)*Math.PI/180;
             const a = Math.sin(df/2)**2 + Math.cos(f1)*Math.cos(f2)*Math.sin(dl/2)**2;
@@ -282,22 +283,16 @@
             window.open(`https://www.google.com/maps/dir/${pts[0].lat},${pts[0].lon}/${pts[1].lat},${pts[1].lon}`, '_blank');
         };
 
-        function applyZoom() {
-            const v = document.getElementById('zoom-slider').value;
-            document.getElementById('zoom-val').innerText = v;
-            video.style.transform = `scale(${v})`;
-        }
-
+        function applyZoom() { video.style.transform = `scale(${document.getElementById('zoom-slider').value})`; document.getElementById('zoom-val').innerText = document.getElementById('zoom-slider').value; }
+        
         resetBtn.onclick = () => {
-            isFrozen = false; sourceImg = null;
-            video.style.display = 'block'; freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
-            resetBtn.style.display = 'none'; debugBox.style.display = 'none'; recalcBtn.style.display = 'none';
-            cameraBtn.style.display = 'block'; fileBtn.style.display = 'block';
-            statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---";
-            mapBtnContainer.innerHTML = "";
+            isFrozen = false; sourceImg = null; video.style.display = 'block'; freezeLayer.style.display = 'none'; 
+            cropCanvas.style.display = 'none'; resetBtn.style.display = 'none'; debugBox.style.display = 'none'; 
+            recalcBtn.style.display = 'none'; cameraBtn.style.display = 'block'; fileBtn.style.display = 'block';
+            statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---"; mapBtnContainer.innerHTML = "";
         };
 
-        thresholdSlider.oninput = () => { if (isFrozen) runOcrOnSelection(); else thresholdVal.innerText = (thresholdSlider.value == 128) ? "Auto" : thresholdSlider.value; };
+        thresholdSlider.oninput = () => { thresholdVal.innerText = thresholdSlider.value; if (isFrozen) runOcrOnSelection(); };
         document.getElementById('zoom-slider').oninput = applyZoom;
         document.querySelectorAll('input[name="map-provider"]').forEach(r => r.onchange = updateMapButton);
         window.onload = initCamera;
