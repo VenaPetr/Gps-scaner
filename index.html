@@ -3,41 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Location Finder - Photo Mode</title>
+    <title>GPS Capture v2.1</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; }
+        .app-header { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 10px; }
+        .app-title { font-size: 12px; font-weight: bold; color: #ed2127; text-transform: uppercase; }
         
-        .app-header { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 10px; padding: 0 5px; }
-        .app-title { font-size: 12px; font-weight: bold; color: #ed2127; text-transform: uppercase; letter-spacing: 1px; }
-        .app-version { font-size: 10px; color: #666; }
-
         #viewer-container { position: relative; width: 100%; max-width: 400px; border: 2px solid #ed2127; border-radius: 15px; overflow: hidden; background: #000; aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; }
         #preview-img { max-width: 100%; max-height: 100%; display: none; }
-        #placeholder-text { color: #444; font-size: 14px; text-align: center; padding: 20px; }
-        
         #crop-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; display: none; touch-action: none; }
 
-        .settings-box { width: 100%; max-width: 400px; margin: 10px 0; background: #222; padding: 10px; border-radius: 10px; box-sizing: border-box; }
-        label { font-size: 11px; color: #888; display: block; margin-bottom: 5px; }
-        input[type=range] { width: 100%; accent-color: #ed2127; }
-
-        .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; }
-        .btn { width: 100%; padding: 16px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; color: white; font-weight: bold; text-align: center; text-decoration: none; display: block; box-sizing: border-box; }
-        #capture-btn { background: #ed2127; }
+        .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+        .btn { width: 100%; padding: 16px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; color: white; font-weight: bold; text-align: center; display: block; box-sizing: border-box; }
+        
+        /* Hlavní tlačítko je teď dominantní a vždy dostupné */
+        #capture-label { background: #ed2127; box-shadow: 0 4px 15px rgba(237, 33, 39, 0.3); }
         #ocr-selection-btn { background: #28a745; display: none; }
-        #reset-btn { background: #555; display: none; }
 
-        .debug-container { margin-top: 10px; padding: 10px; background: #000; border: 1px dashed #444; border-radius: 8px; width: 100%; max-width: 400px; box-sizing: border-box; display: none; }
-        #ocr-canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid #00ff00; }
-
-        #result { margin-top: 10px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; box-sizing: border-box; }
-        #output-text { font-size: 15px; color: #00ff00; margin: 8px 0; font-family: monospace; word-break: break-all; background: #000; padding: 5px; min-height: 20px; }
+        #result { margin-top: 10px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; }
+        #output-text { font-size: 15px; color: #00ff00; margin: 8px 0; font-family: monospace; background: #000; padding: 5px; min-height: 20px; }
         .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
-
+        
         #history-list { width: 100%; max-width: 400px; margin-top: 10px; }
         .history-item { display: flex; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; gap: 10px; }
-        .history-info { flex-grow: 1; display: flex; flex-direction: column; }
         .delete-btn { color: #ed2127; cursor: pointer; font-size: 18px; }
     </style>
 </head>
@@ -45,31 +34,20 @@
 
     <div class="app-header">
         <div class="app-title">GPS Location Finder</div>
-        <div class="app-version">v2.0-capture</div>
+        <div style="font-size: 10px; color: #666;">v2.1-fast</div>
     </div>
 
     <div id="viewer-container">
-        <div id="placeholder-text">KLIKNĚTE NA TLAČÍTKO NÍŽE<br>A VYFOŤTE OBRAZOVKU SE SOUŘADNICEMI</div>
+        <div id="placeholder" style="text-align:center; color:#444;">FOTKA ZDE</div>
         <img id="preview-img">
         <canvas id="crop-canvas"></canvas>
     </div>
 
-    <div class="settings-box">
-        <label>Práh čitelnosti (Threshold): <span id="threshold-val">Auto</span></label>
-        <input type="range" id="threshold-slider" min="0" max="255" step="1" value="128">
-    </div>
-
     <div class="controls">
-        <label for="camera-input" class="btn" id="capture-btn">OTEVŘÍT FOTOAPARÁT</label>
+        <label for="camera-input" class="btn" id="capture-label">FOTIT / NAHRÁT NOVOU</label>
         <input type="file" id="camera-input" accept="image/*" capture="environment" style="display: none;">
         
-        <button id="ocr-selection-btn">PŘEČÍST VÝBĚR</button>
-        <button id="reset-btn">NOVÁ FOTKA</button>
-    </div>
-
-    <div id="debug-box" class="debug-container">
-        <label style="color: #00ff00; font-size: 9px; margin-bottom: 3px; display: block;">BINÁRNÍ VÝŘEZ PRO OCR:</label>
-        <canvas id="ocr-canvas"></canvas>
+        <button id="ocr-selection-btn" class="btn">PŘEČÍST VÝBĚR</button>
     </div>
 
     <div id="result">
@@ -79,129 +57,97 @@
     </div>
 
     <div id="history-list"></div>
-
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
 
     <script>
         const cameraInput = document.getElementById('camera-input'), previewImg = document.getElementById('preview-img');
         const cropCanvas = document.getElementById('crop-canvas'), rawCropCanvas = document.getElementById('raw-crop-canvas');
-        const ocrCanvas = document.getElementById('ocr-canvas'), debugBox = document.getElementById('debug-box');
         const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text');
-        const mapBtnContainer = document.getElementById('map-button-container'), resetBtn = document.getElementById('reset-btn');
-        const ocrSelectionBtn = document.getElementById('ocr-selection-btn'), placeholder = document.getElementById('placeholder-text');
+        const mapBtnContainer = document.getElementById('map-button-container'), ocrBtn = document.getElementById('ocr-selection-btn');
 
         let sourceImg = null, isDrawing = false, startX, startY, selection = { x: 0, y: 0, w: 0, h: 0 };
         let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
 
-        // Inicializace historie při načtení
         window.onload = renderHistory;
 
         cameraInput.onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
+            // Reset předchozího stavu
+            ocrBtn.style.display = 'none';
+            mapBtnContainer.innerHTML = "";
+            outputText.innerText = "---";
+
             const reader = new FileReader();
             reader.onload = (ev) => {
                 const img = new Image();
                 img.onload = () => {
                     sourceImg = img;
-                    placeholder.style.display = 'none';
+                    document.getElementById('placeholder').style.display = 'none';
                     previewImg.src = ev.target.result;
                     previewImg.style.display = 'block';
                     cropCanvas.style.display = 'block';
-                    resetBtn.style.display = 'block';
-                    document.getElementById('capture-btn').style.display = 'none';
                     
-                    // Nastavení plátna pro kreslení výběru podle zobrazeného obrázku
-                    const rect = previewImg.getBoundingClientRect();
                     cropCanvas.width = previewImg.clientWidth;
                     cropCanvas.height = previewImg.clientHeight;
-                    
-                    statusDisp.innerText = "OZNAČTE TEXT PRSTEM";
+                    statusDisp.innerText = "OZNAČTE TEXT VÝŘEZEM";
                 };
                 img.src = ev.target.result;
             };
             reader.readAsDataURL(file);
         };
 
-        // Kreslení výběrového obdélníku
-        function getMousePos(canvas, evt) {
-            const rect = canvas.getBoundingClientRect();
-            const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
-            const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+        // Kreslení (Touch i Mouse)
+        function getPos(e) {
+            const rect = cropCanvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
             return { x: clientX - rect.left, y: clientY - rect.top };
         }
 
-        const startDraw = (e) => { if(!sourceImg) return; isDrawing = true; const p = getMousePos(cropCanvas, e); startX = p.x; startY = p.y; };
-        const doDraw = (e) => {
+        cropCanvas.addEventListener('touchstart', (e) => { 
+            e.preventDefault(); 
+            isDrawing = true; 
+            const p = getPos(e); startX = p.x; startY = p.y; 
+        }, {passive: false});
+
+        cropCanvas.addEventListener('touchmove', (e) => {
             if (!isDrawing) return;
-            const p = getMousePos(cropCanvas, e);
+            const p = getPos(e);
             selection = { x: Math.min(startX, p.x), y: Math.min(startY, p.y), w: Math.abs(p.x - startX), h: Math.abs(p.y - startY) };
             const ctx = cropCanvas.getContext('2d');
             ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
             ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 3;
             ctx.strokeRect(selection.x, selection.y, selection.w, selection.h);
-        };
-        const endDraw = () => { 
-            if (!isDrawing) return; 
+        }, {passive: false});
+
+        window.addEventListener('touchend', () => { 
+            if (isDrawing && selection.w > 10) ocrBtn.style.display = 'block';
             isDrawing = false; 
-            if (selection.w > 10) ocrSelectionBtn.style.display = 'block'; 
-        };
+        });
 
-        cropCanvas.addEventListener('mousedown', startDraw);
-        cropCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e); }, {passive: false});
-        cropCanvas.addEventListener('mousemove', doDraw);
-        cropCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); doDraw(e); }, {passive: false});
-        window.addEventListener('mouseup', endDraw);
-        cropCanvas.addEventListener('touchend', endDraw);
-
-        ocrSelectionBtn.onclick = () => {
+        ocrBtn.onclick = async () => {
             if (!sourceImg) return;
-            // Přepočet souřadnic z displeje na skutečné rozlišení fotky
+            statusDisp.innerText = "⏳ ČTU...";
+            
             const scaleX = sourceImg.width / previewImg.clientWidth;
             const scaleY = sourceImg.height / previewImg.clientHeight;
-
             rawCropCanvas.width = selection.w * scaleX;
             rawCropCanvas.height = selection.h * scaleY;
+            
             const ctx = rawCropCanvas.getContext('2d');
             ctx.drawImage(sourceImg, selection.x * scaleX, selection.y * scaleY, selection.w * scaleX, selection.h * scaleY, 0, 0, rawCropCanvas.width, rawCropCanvas.height);
             
-            processImageAndOCR();
-        };
-
-        async function processImageAndOCR() {
-            debugBox.style.display = 'block';
-            statusDisp.innerText = "⏳ ČTU...";
-            
-            const ocrCtx = ocrCanvas.getContext('2d');
-            ocrCanvas.width = rawCropCanvas.width;
-            ocrCanvas.height = rawCropCanvas.height;
-
-            let imgData = rawCropCanvas.getContext('2d').getImageData(0, 0, rawCropCanvas.width, rawCropCanvas.height);
-            let d = imgData.data, totalB = 0;
-
-            for (let i = 0; i < d.length; i += 4) totalB += (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11);
-            let avgB = totalB / (d.length / 4);
-            let thresholdSlider = document.getElementById('threshold-slider');
-            let thresh = (thresholdSlider.value == 128) ? avgB : thresholdSlider.value;
-            
-            if(thresholdSlider.value == 128) document.getElementById('threshold-val').innerText = "Auto (" + Math.round(avgB) + ")";
-
-            for (let i = 0; i < d.length; i += 4) {
-                let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > thresh) ? 255 : 0;
-                d[i] = d[i+1] = d[i+2] = v;
-            }
-            ocrCtx.putImageData(imgData, 0, 0);
-
             try {
-                const result = await Tesseract.recognize(ocrCanvas, 'eng', { 
+                const result = await Tesseract.recognize(rawCropCanvas, 'eng', { 
                     tessedit_char_whitelist: '0123456789.,°\'"NSEWnsewVZvz ' 
                 });
                 const text = result.data.text.trim();
                 outputText.innerText = text || "Nenalezen text";
                 parseCoordinates(text);
             } catch (e) { statusDisp.innerText = "CHYBA OCR"; }
-        }
+        };
 
         function parseCoordinates(text) {
             const coordRegex = /([NSNSEWnsewVZvz]?\s*\d{1,3}[°\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[NSNSEWnsewVZvz]?)/gi;
@@ -218,84 +164,48 @@
                 if (simpleMatches && simpleMatches.length >= 2) { fLat = simpleMatches[0].replace(',', '.'); fLon = simpleMatches[1].replace(',', '.'); }
             }
 
-            if (fLat && fLon && !isNaN(fLat) && !isNaN(fLon)) displayResult(fLat, fLon, "✅ ZPRACOVÁNO");
-            else statusDisp.innerText = "❓ NEROZPOZNÁNO";
+            if (fLat && fLon && !isNaN(fLat)) {
+                statusDisp.innerText = "✅ HOTOVO";
+                const mapUrl = `https://mapy.cz/zakladni?x=${fLon}&y=${fLat}&z=16&source=coor&id=${fLon}%2C${fLat}`;
+                mapBtnContainer.innerHTML = `<a href="${mapUrl}" target="_blank" class="map-link">ZOBRAZIT NA MAPĚ</a>`;
+                saveToHistory(fLat, fLon);
+            } else { statusDisp.innerText = "❓ NEČITELNÉ"; }
         }
 
         function convertToDecimal(coordStr) {
             const nums = coordStr.match(/(\d+(\.\d+)?)/g);
             if (!nums) return { val: null, type: 'unknown' };
-            let decimal = 0;
-            if (nums.length === 1) decimal = parseFloat(nums[0]);
-            else if (nums.length === 2) decimal = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60);
-            else if (nums.length >= 3) decimal = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60) + (parseFloat(nums[2]) / 3600);
-            
-            let type = 'unknown';
-            if (/[NSns]/.test(coordStr)) type = 'lat';
-            if (/[EWewVZvz]/.test(coordStr)) type = 'lon';
-            if (/[SWswZz]/.test(coordStr)) decimal = -decimal;
-            return { val: decimal.toFixed(6), type: type };
-        }
-
-        function displayResult(lat, lon, msg) {
-            statusDisp.innerText = msg;
-            const mapUrl = `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}`;
-            mapBtnContainer.innerHTML = `<a href="${mapUrl}" target="_blank" class="map-link">ZOBRAZIT BOD NA MAPĚ</a>`;
-            saveToHistory(lat, lon);
+            let dec = 0;
+            if (nums.length === 1) dec = parseFloat(nums[0]);
+            else if (nums.length === 2) dec = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60);
+            else if (nums.length >= 3) dec = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60) + (parseFloat(nums[2]) / 3600);
+            let type = (/[NSns]/.test(coordStr)) ? 'lat' : (/[EWewVZvz]/.test(coordStr) ? 'lon' : 'unknown');
+            if (/[SWswZz]/.test(coordStr)) dec = -dec;
+            return { val: dec.toFixed(6), type: type };
         }
 
         function saveToHistory(lat, lon) {
-            history = history.filter(h => h.lat !== lat); 
-            history.unshift({ lat, lon }); 
-            if (history.length > 20) history.pop();
-            localStorage.setItem('gps_history', JSON.stringify(history)); 
+            history = history.filter(h => h.lat !== lat).slice(0, 19);
+            history.unshift({ lat, lon });
+            localStorage.setItem('gps_history', JSON.stringify(history));
             renderHistory();
         }
 
         function renderHistory() {
             const list = document.getElementById('history-list');
-            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">POSLEDNÍ SKENY:</div>' : '';
-            history.forEach((h, index) => {
+            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin-bottom:5px">HISTORIE:</div>' : '';
+            history.forEach((h, i) => {
                 const item = document.createElement('div'); item.className = 'history-item';
-                const mapUrl = `https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=16&source=coor&id=${h.lon}%2C${h.lat}`;
                 item.innerHTML = `
-                    <div class="history-info">
-                        <span style="font-weight:bold; color:#00ff00">${h.lat}, ${h.lon}</span>
-                    </div>
-                    <a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-size:10px">MAPA</a>
-                    <span class="delete-btn" onclick="event.stopPropagation(); deleteHistoryItem(${index})">🗑</span>
-                `;
+                    <div style="flex-grow:1; color:#00ff00; font-weight:bold">${h.lat}, ${h.lon}</div>
+                    <a href="https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=16&source=coor&id=${h.lon}%2C${h.lat}" target="_blank" style="color:#4a90e2; text-decoration:none">MAPA</a>
+                    <span class="delete-btn" onclick="deleteItem(${i})">🗑</span>`;
                 list.appendChild(item);
             });
         }
 
-        window.deleteHistoryItem = (index) => {
-            history.splice(index, 1);
-            localStorage.setItem('gps_history', JSON.stringify(history));
-            renderHistory();
-        };
-
-        resetBtn.onclick = () => {
-            sourceImg = null;
-            previewImg.style.display = 'none';
-            cropCanvas.style.display = 'none';
-            placeholder.style.display = 'block';
-            resetBtn.style.display = 'none';
-            ocrSelectionBtn.style.display = 'none';
-            debugBox.style.display = 'none';
-            document.getElementById('capture-btn').style.display = 'block';
-            statusDisp.innerText = "PŘIPRAVENO";
-            outputText.innerText = "---";
-            mapBtnContainer.innerHTML = "";
-            cameraInput.value = "";
-            const ctx = cropCanvas.getContext('2d');
-            ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
-        };
-
-        document.getElementById('threshold-slider').oninput = () => {
-            document.getElementById('threshold-val').innerText = document.getElementById('threshold-slider').value == 128 ? "Auto" : document.getElementById('threshold-slider').value;
-            if (sourceImg && selection.w > 0) processImageAndOCR();
-        };
+        window.deleteItem = (i) => { history.splice(i, 1); localStorage.setItem('gps_history', JSON.stringify(history)); renderHistory(); };
     </script>
 </body>
 </html>
+
