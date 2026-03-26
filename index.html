@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Location Finder v1.0.8</title>
+    <title>GPS Finder v1.1.0 - MultiMap</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
-        
         .app-header { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 5px; padding: 0 5px; }
         .app-title { font-size: 12px; font-weight: bold; color: #ed2127; text-transform: uppercase; letter-spacing: 1px; }
         .app-version { font-size: 10px; color: #666; }
@@ -18,317 +17,244 @@
         #crop-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; display: none; touch-action: none; }
         .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 15%; border: 2px solid #00ff00; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); z-index: 10; pointer-events: none; }
         
-        .settings-box { width: 100%; max-width: 400px; margin: 10px 0; background: #222; padding: 10px; border-radius: 10px; box-sizing: border-box; }
-        label { font-size: 11px; color: #888; display: block; margin-bottom: 5px; }
-        input[type=range] { width: 100%; accent-color: #ed2127; margin-bottom: 10px; }
+        .settings-box { width: 100%; max-width: 400px; margin: 10px 0; background: #222; padding: 12px; border-radius: 10px; box-sizing: border-box; }
+        .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        label { font-size: 11px; color: #888; }
         
+        /* Map Toggle */
+        .map-toggle { display: flex; background: #000; border-radius: 8px; padding: 3px; width: 100%; margin-top: 5px; }
+        .map-toggle button { flex: 1; padding: 8px; font-size: 11px; border: none; border-radius: 6px; background: transparent; color: #666; transition: 0.3s; cursor: pointer; }
+        .map-toggle button.active { background: #444; color: #fff; }
+        .map-toggle button.active.gmap { border-bottom: 2px solid #4285F4; }
+        .map-toggle button.active.mcz { border-bottom: 2px solid #ed2127; }
+
         .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; }
-        button { width: 100%; padding: 16px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; }
-        #ocr-selection-btn { background: #28a745; display: none; }
+        button.main-btn { width: 100%; padding: 16px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; }
         #reset-btn { background: #555; display: none; }
         
-        .debug-container { margin-top: 10px; padding: 10px; background: #000; border: 1px dashed #444; border-radius: 8px; width: 100%; max-width: 400px; box-sizing: border-box; display: none; }
-        #ocr-canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid #00ff00; }
-
         #result { margin-top: 10px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; box-sizing: border-box; }
-        #output-text { font-size: 15px; color: #00ff00; margin: 8px 0; font-family: monospace; word-break: break-all; background: #000; padding: 5px; min-height: 20px; }
-        
-        .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
-        
-        #history-list { width: 100%; max-width: 400px; margin-top: 10px; }
-        .history-item { display: flex; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; gap: 10px; }
-        .history-info { flex-grow: 1; display: flex; flex-direction: column; }
-        .delete-btn { color: #ed2127; cursor: pointer; font-size: 18px; padding: 2px 5px; }
+        #output-text { font-size: 15px; color: #00ff00; margin: 8px 0; font-family: monospace; word-break: break-all; background: #000; padding: 5px; }
 
-        #route-section { width: 100%; max-width: 400px; margin-top: 15px; }
-        #route-btn { background: #4a90e2; display: none; width: 100%; }
-        #url-debug { margin-top: 8px; padding: 8px; background: #000; color: #aaa; font-size: 9px; border-radius: 5px; border: 1px solid #333; word-break: break-all; display: none; font-family: monospace; }
-        input[type="checkbox"] { transform: scale(1.3); accent-color: #28a745; }
+        /* History & Distance */
+        #history-list { width: 100%; max-width: 400px; margin-top: 10px; }
+        .history-item { display: flex; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 12px; gap: 10px; }
+        .history-info { flex-grow: 1; cursor: pointer; }
+        .order-badge { background: #00ff00; color: #000; border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; margin-right: 5px; }
+        
+        #route-actions { width: 100%; max-width: 400px; margin-top: 15px; display: none; flex-direction: column; gap: 10px; }
+        .route-btn { background: #4285F4; color: white; padding: 15px; border-radius: 10px; border: none; font-weight: bold; width: 100%; cursor: pointer; }
+        #dist-display { background: #333; padding: 10px; border-radius: 8px; text-align: center; font-size: 14px; border-left: 4px solid #00ff00; }
+        
+        input[type="checkbox"] { transform: scale(1.4); accent-color: #00ff00; }
     </style>
 </head>
 <body>
 
     <div class="app-header">
-        <div class="app-title">GPS Location Finder</div>
-        <div class="app-version">v1.0.8</div>
+        <div class="app-title">GPS Finder</div>
+        <div class="app-version">v1.1.0</div>
     </div>
 
     <div id="viewer-container">
         <video id="video" autoplay playsinline></video>
         <canvas id="freeze-layer"></canvas>
         <canvas id="crop-canvas"></canvas>
-        <div class="overlay" id="rect-overlay"></div>
+        <div class="overlay"></div>
     </div>
 
     <div class="settings-box">
-        <label>Zoom: <span id="zoom-val">1.5</span>x</label>
-        <input type="range" id="zoom-slider" min="1" max="8" step="0.1" value="1.5">
-        <label>Threshold: <span id="threshold-val">Auto</span></label>
-        <input type="range" id="threshold-slider" min="0" max="255" step="1" value="128">
+        <div class="setting-row">
+            <label>Zoom: <span id="zoom-val">1.5</span>x</label>
+            <input type="range" id="zoom-slider" min="1" max="8" step="0.1" value="1.5" style="width:70%">
+        </div>
+        <label>VÝBĚR MAPY:</label>
+        <div class="map-toggle">
+            <button id="btn-mcz" class="active mcz" onclick="setMap('mcz')">Mapy.cz</button>
+            <button id="btn-gmap" class="gmap" onclick="setMap('gmap')">Google Maps</button>
+        </div>
     </div>
 
     <div class="controls">
-        <button id="capture-btn">SKENOVAT KAMEROU</button>
-        <button id="file-btn" style="background:#444">FOTKA Z GALERIE</button>
-        <input type="file" id="file-input" accept="image/*" style="display: none;">
-        <button id="ocr-selection-btn">PŘEČÍST VÝBĚR</button>
-        <button id="reset-btn">ZPĚT KE KAMERĚ</button>
-    </div>
-
-    <div id="debug-box" class="debug-container">
-        <label style="color: #00ff00; font-size: 9px; margin-bottom: 3px; display: block;">BINÁRNÍ VÝŘEZ:</label>
-        <canvas id="ocr-canvas"></canvas>
+        <button id="capture-btn" class="main-btn">SKENOVAT KAMEROU</button>
+        <button id="reset-btn" class="main-btn">ZPĚT KE KAMERĚ</button>
     </div>
 
     <div id="result">
         <div id="status" style="font-size: 12px; color: #888;">PŘIPRAVENO</div>
         <div id="output-text">---</div>
-        <div id="map-button-container"></div>
     </div>
 
     <div id="history-list"></div>
 
-    <div id="route-section">
-        <button id="route-btn" onclick="generateRoute()">VYGENEROVAT TRASU (RC)</button>
-        <div id="url-debug"></div>
+    <div id="route-actions">
+        <div id="dist-display">Vzdálenost: 0 km</div>
+        <button id="gen-route-btn" class="route-btn" onclick="openRoute()">OTEVŘÍT TRASU (GOOOGLE)</button>
     </div>
 
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
 
     <script>
-        const video = document.getElementById('video'), freezeLayer = document.getElementById('freeze-layer'), cropCanvas = document.getElementById('crop-canvas');
-        const rawCropCanvas = document.getElementById('raw-crop-canvas'), ocrCanvas = document.getElementById('ocr-canvas'), debugBox = document.getElementById('debug-box');
-        const fileInput = document.getElementById('file-input'), captureBtn = document.getElementById('capture-btn'), fileBtn = document.getElementById('file-btn'), resetBtn = document.getElementById('reset-btn'), ocrSelectionBtn = document.getElementById('ocr-selection-btn');
-        const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text'), mapBtnContainer = document.getElementById('map-button-container');
-        const routeBtn = document.getElementById('route-btn'), urlDebug = document.getElementById('url-debug');
-
-        let videoTrack = null, isFrozen = false, isGalleryMode = false, isDrawing = false, sourceImg = null, startX, startY, selection = { x: 0, y: 0, w: 0, h: 0 };
+        let selectedMap = 'mcz';
         let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
+        let selectionOrder = []; // Sleduje pořadí zaškrtnutí
+
+        const video = document.getElementById('video'), freezeLayer = document.getElementById('freeze-layer');
+        const rawCropCanvas = document.getElementById('raw-crop-canvas');
+        const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text');
+        const routeActions = document.getElementById('route-actions');
 
         async function initCamera() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } });
-                video.srcObject = stream; videoTrack = stream.getVideoTracks()[0];
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                video.srcObject = stream;
                 renderHistory();
             } catch (err) { statusDisp.innerText = "CHYBA KAMERY"; }
         }
 
-        function getMousePos(canvas, evt) {
-            const rect = canvas.getBoundingClientRect();
-            const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
-            const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
-            return { x: (clientX - rect.left) * (canvas.width / rect.width), y: (clientY - rect.top) * (canvas.height / rect.height) };
+        function setMap(type) {
+            selectedMap = type;
+            document.getElementById('btn-mcz').classList.toggle('active', type === 'mcz');
+            document.getElementById('btn-gmap').classList.toggle('active', type === 'gmap');
+            renderHistory();
         }
 
-        fileBtn.onclick = () => fileInput.click();
-        fileInput.onchange = (e) => {
-            const file = e.target.files[0]; if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const img = new Image();
-                img.onload = () => {
-                    sourceImg = img; isFrozen = true; isGalleryMode = true;
-                    video.style.display = 'none'; document.getElementById('rect-overlay').style.display = 'none';
-                    const aspect = img.height / img.width;
-                    freezeLayer.width = cropCanvas.width = 1000;
-                    freezeLayer.height = cropCanvas.height = 1000 * aspect;
-                    freezeLayer.getContext('2d').drawImage(img, 0, 0, freezeLayer.width, freezeLayer.height);
-                    freezeLayer.style.display = 'block'; cropCanvas.style.display = 'block';
-                    resetBtn.style.display = 'block'; captureBtn.style.display = 'none';
-                    statusDisp.innerText = "VYBERTE TEXT RÁMEČKEM";
-                };
-                img.src = ev.target.result;
-            };
-            reader.readAsDataURL(file);
-        };
-
-        const startDraw = (e) => { if(!isGalleryMode) return; isDrawing = true; const p = getMousePos(cropCanvas, e); startX = p.x; startY = p.y; };
-        const doDraw = (e) => {
-            if (!isDrawing) return;
-            const p = getMousePos(cropCanvas, e);
-            selection = { x: Math.min(startX, p.x), y: Math.min(startY, p.y), w: Math.abs(p.x - startX), h: Math.abs(p.y - startY) };
-            const ctx = cropCanvas.getContext('2d');
-            ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
-            ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 5;
-            ctx.strokeRect(selection.x, selection.y, selection.w, selection.h);
-        };
-        const endDraw = () => { if (!isDrawing) return; isDrawing = false; if (selection.w > 10) { ocrSelectionBtn.style.display = 'block'; runOcrOnSelection(); } };
-
-        cropCanvas.addEventListener('mousedown', startDraw);
-        cropCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e); }, {passive: false});
-        cropCanvas.addEventListener('mousemove', doDraw);
-        cropCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); doDraw(e); }, {passive: false});
-        window.addEventListener('mouseup', endDraw);
-        cropCanvas.addEventListener('touchend', endDraw);
-
-        function runOcrOnSelection() {
-            if (!sourceImg) return;
-            const scaleX = sourceImg.width / freezeLayer.width;
-            const scaleY = sourceImg.height / freezeLayer.height;
-            rawCropCanvas.width = selection.w * scaleX; rawCropCanvas.height = selection.h * scaleY;
-            const ctx = rawCropCanvas.getContext('2d');
-            ctx.drawImage(sourceImg, selection.x * scaleX, selection.y * scaleY, selection.w * scaleX, selection.h * scaleY, 0, 0, rawCropCanvas.width, rawCropCanvas.height);
-            processImageAndOCR();
-        }
-
-        captureBtn.onclick = async () => {
+        // --- OCR LOGIC ---
+        document.getElementById('capture-btn').onclick = async () => {
             if (!video.videoWidth) return;
-            isFrozen = true; isGalleryMode = false;
             const z = parseFloat(document.getElementById('zoom-slider').value);
             freezeLayer.width = 600; freezeLayer.height = 600;
             freezeLayer.getContext('2d').drawImage(video, 0, 0, 600, 600);
             freezeLayer.style.display = 'block'; video.style.display = 'none';
+            
             const sw = (video.videoWidth / z) * 0.8, sh = (video.videoHeight / z) * 0.15;
             const sx = (video.videoWidth - sw) / 2, sy = (video.videoHeight - sh) / 2;
             rawCropCanvas.width = sw * 2; rawCropCanvas.height = sh * 2;
             rawCropCanvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, rawCropCanvas.width, rawCropCanvas.height);
-            resetBtn.style.display = 'block'; captureBtn.style.display = 'none';
-            processImageAndOCR();
+            
+            document.getElementById('reset-btn').style.display = 'block';
+            document.getElementById('capture-btn').style.display = 'none';
+            statusDisp.innerText = "⏳ ČTU...";
+
+            const result = await Tesseract.recognize(rawCropCanvas, 'eng');
+            const text = result.data.text.trim();
+            outputText.innerText = text || "Nenalezeno";
+            parseAndSave(text);
         };
 
-        async function processImageAndOCR() {
-            debugBox.style.display = 'block'; statusDisp.innerText = "⏳ ČTU...";
-            const ocrCtx = ocrCanvas.getContext('2d');
-            ocrCanvas.width = rawCropCanvas.width; ocrCanvas.height = rawCropCanvas.height;
-            let imgData = rawCropCanvas.getContext('2d').getImageData(0, 0, rawCropCanvas.width, rawCropCanvas.height);
-            let d = imgData.data, totalB = 0;
-            for (let i = 0; i < d.length; i += 4) totalB += (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11);
-            let avgB = totalB / (d.length / 4);
-            let thresholdSlider = document.getElementById('threshold-slider');
-            let thresh = (thresholdSlider.value == 128) ? avgB : thresholdSlider.value;
-            if(thresholdSlider.value == 128) document.getElementById('threshold-val').innerText = "Auto (" + Math.round(avgB) + ")";
-            for (let i = 0; i < d.length; i += 4) { let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > thresh) ? 255 : 0; d[i] = d[i+1] = d[i+2] = v; }
-            ocrCtx.putImageData(imgData, 0, 0);
-            try {
-                const result = await Tesseract.recognize(ocrCanvas, 'eng', { tessedit_char_whitelist: '0123456789.,°\'"NSEWnsewVZvz ' });
-                const text = result.data.text.trim();
-                outputText.innerText = text || "Nenalezen text";
-                parseCoordinates(text);
-            } catch (e) { statusDisp.innerText = "CHYBA OCR"; }
-        }
-
-        function parseCoordinates(text) {
-            const coordRegex = /([NSNSEWnsewVZvz]?\s*\d{1,3}[°\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[NSNSEWnsewVZvz]?)/gi;
-            const matches = text.match(coordRegex);
-            let fLat = null, fLon = null;
-            if (matches && matches.length >= 2) {
-                const c1 = convertToDecimal(matches[0]), c2 = convertToDecimal(matches[1]);
-                if (c1.type === 'lon' || c2.type === 'lat') { fLat = c2.val; fLon = c1.val; } 
-                else { fLat = c1.val; fLon = c2.val; }
-            } else {
-                const simpleRegex = /([0-9]{2,3}[.,][0-9]{3,})/g;
-                const simpleMatches = text.match(simpleRegex);
-                if (simpleMatches && simpleMatches.length >= 2) { fLat = simpleMatches[0].replace(',', '.'); fLon = simpleMatches[1].replace(',', '.'); }
+        function parseAndSave(text) {
+            const simpleRegex = /([0-9]{2,3}[.,][0-9]{3,})/g;
+            const m = text.match(simpleRegex);
+            if (m && m.length >= 2) {
+                const lat = m[0].replace(',', '.'), lon = m[1].replace(',', '.');
+                history.unshift({ lat, lon, id: Date.now() });
+                localStorage.setItem('gps_history', JSON.stringify(history));
+                renderHistory();
             }
-            if (fLat && fLon) displayResult(fLat, fLon, "✅ ZPRACOVÁNO");
-            else statusDisp.innerText = "❓ NEROZPOZNÁNO";
         }
 
-        function convertToDecimal(coordStr) {
-            const nums = coordStr.match(/(\d+(\.\d+)?)/g);
-            if (!nums) return { val: null, type: 'unknown' };
-            let decimal = 0;
-            if (nums.length === 1) decimal = parseFloat(nums[0]);
-            else if (nums.length === 2) decimal = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60);
-            else if (nums.length >= 3) decimal = parseFloat(nums[0]) + (parseFloat(nums[1]) / 60) + (parseFloat(nums[2]) / 3600);
-            let type = 'unknown';
-            if (/[NSns]/.test(coordStr)) type = 'lat';
-            if (/[EWewVZvz]/.test(coordStr)) type = 'lon';
-            if (/[SWswZz]/.test(coordStr)) decimal = -decimal;
-            return { val: decimal.toFixed(6), type: type };
+        // --- DISTANCE CALC (Haversine) ---
+        function calculateTotalDistance(points) {
+            if (points.length < 2) return 0;
+            let total = 0;
+            const R = 6371; // Poloměr Země v km
+            for (let i = 0; i < points.length - 1; i++) {
+                const dLat = (points[i+1].lat - points[i].lat) * Math.PI / 180;
+                const dLon = (points[i+1].lon - points[i].lon) * Math.PI / 180;
+                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                          Math.cos(points[i].lat * Math.PI / 180) * Math.cos(points[i+1].lat * Math.PI / 180) *
+                          Math.sin(dLon/2) * Math.sin(dLon/2);
+                total += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            }
+            return total;
         }
 
-        function displayResult(lat, lon, msg) {
-            statusDisp.innerText = msg;
-            const mapUrl = `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}`;
-            mapBtnContainer.innerHTML = `<a href="${mapUrl}" target="_blank" class="map-link">ZOBRAZIT BOD NA MAPĚ</a>`;
-            saveToHistory(lat, lon);
-        }
-
-        function saveToHistory(lat, lon) {
-            history = history.filter(h => h.lat !== lat); 
-            history.unshift({ lat, lon, selected: true }); 
-            if (history.length > 20) history.pop();
-            localStorage.setItem('gps_history', JSON.stringify(history)); 
-            renderHistory();
-        }
-
-        function toggleHistorySelect(index) {
-            history[index].selected = !history[index].selected;
-            localStorage.setItem('gps_history', JSON.stringify(history));
-            updateDebugUrl();
-        }
-
-        function deleteHistoryItem(index) {
-            history.splice(index, 1);
-            localStorage.setItem('gps_history', JSON.stringify(history));
+        function toggleSelect(id) {
+            const idx = selectionOrder.indexOf(id);
+            if (idx > -1) selectionOrder.splice(idx, 1);
+            else selectionOrder.push(id);
             renderHistory();
         }
 
         function renderHistory() {
             const list = document.getElementById('history-list');
-            list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">HISTORIE (ZAŠKRTNĚTE BODY PRO TRASU):</div>' : '';
-            history.forEach((h, index) => {
-                const item = document.createElement('div'); item.className = 'history-item';
-                const mapUrl = `https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=16&source=coor&id=${h.lon}%2C${h.lat}`;
+            list.innerHTML = '';
+            
+            history.forEach(h => {
+                const order = selectionOrder.indexOf(h.id);
+                const isSelected = order > -1;
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                
+                const mapLink = selectedMap === 'gmap' 
+                    ? `https://www.google.com/maps/search/?api=1&query=${h.lat},${h.lon}`
+                    : `https://mapy.cz/zakladni?x=${h.lon}&y=${h.lat}&z=16&source=coor&id=${h.lon}%2C${h.lat}`;
+
                 item.innerHTML = `
-                    <input type="checkbox" ${h.selected ? 'checked' : ''} onchange="toggleHistorySelect(${index})">
-                    <div class="history-info">
-                        <span style="font-weight:bold; color:#00ff00">${h.lat}, ${h.lon}</span>
+                    <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="toggleSelect(${h.id})">
+                    <div class="history-info" onclick="window.open('${mapLink}', '_blank')">
+                        ${isSelected ? `<span class="order-badge">${order + 1}</span>` : ''}
+                        <span style="color:#00ff00; font-family:monospace;">${h.lat}, ${h.lon}</span>
                     </div>
-                    <a href="${mapUrl}" target="_blank" style="color:#4a90e2; text-decoration:none; font-size:10px">BOD</a>
-                    <span class="delete-btn" onclick="deleteHistoryItem(${index})">🗑</span>
+                    <span onclick="deleteItem(${h.id})" style="color:#666">🗑</span>
                 `;
                 list.appendChild(item);
             });
-            routeBtn.style.display = history.length > 1 ? 'block' : 'none';
-            updateDebugUrl();
-        }
 
-        function updateDebugUrl() {
-            const selected = history.filter(h => h.selected);
-            if (selected.length < 2) {
-                urlDebug.style.display = 'none';
-                return;
+            // Update trasy a vzdálenosti
+            const selectedPoints = selectionOrder.map(id => history.find(h => h.id === id));
+            if (selectedPoints.length >= 2) {
+                routeActions.style.display = 'flex';
+                const dist = calculateTotalDistance(selectedPoints);
+                document.getElementById('dist-display').innerText = `Vzdálenost: ${dist.toFixed(2)} km`;
+                
+                const btn = document.getElementById('gen-route-btn');
+                if (selectedMap === 'gmap') {
+                    btn.innerText = "OTEVŘÍT TRASU V GOOGLE MAPÁCH";
+                    btn.style.background = "#4285F4";
+                    btn.disabled = false;
+                } else {
+                    btn.innerText = "TRASU UMÍ JEN GOOGLE MAPY";
+                    btn.style.background = "#333";
+                    btn.disabled = true;
+                }
+            } else {
+                routeActions.style.display = 'none';
             }
-            const chronological = [...selected].reverse();
-            let rcStr = "";
-            chronological.forEach((p, i) => {
-                rcStr += `${p.lon}_${p.lat}`;
-                if (i < chronological.length - 1) rcStr += "_";
-            });
-            const finalUrl = `https://mapy.cz/zakladni?planovani-trasy&rc=${rcStr}&p=1`;
-            urlDebug.innerText = "DEBUG URL: " + finalUrl;
-            urlDebug.style.display = 'block';
-            return finalUrl;
         }
 
-        function generateRoute() {
-            const url = updateDebugUrl();
-            if (url) window.open(url, '_blank');
-            else alert("Vyberte alespoň 2 body v historii!");
+        function openRoute() {
+            const selectedPoints = selectionOrder.map(id => history.find(h => h.id === id));
+            if (selectedPoints.length < 2) return;
+
+            const origin = `${selectedPoints[0].lat},${selectedPoints[0].lon}`;
+            const destination = `${selectedPoints[selectedPoints.length-1].lat},${selectedPoints[selectedPoints.length-1].lon}`;
+            
+            let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+            
+            if (selectedPoints.length > 2) {
+                const waypoints = selectedPoints.slice(1, -1).map(p => `${p.lat},${p.lon}`).join('|');
+                url += `&waypoints=${waypoints}`;
+            }
+            window.open(url, '_blank');
         }
 
-        resetBtn.onclick = () => {
-            isFrozen = false; isGalleryMode = false; sourceImg = null;
-            video.style.display = 'block'; freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
-            document.getElementById('rect-overlay').style.display = 'block';
-            resetBtn.style.display = 'none'; ocrSelectionBtn.style.display = 'none'; debugBox.style.display = 'none';
-            captureBtn.style.display = 'block'; statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---";
-            mapBtnContainer.innerHTML = ""; document.getElementById('file-input').value = "";
-            const ctx = cropCanvas.getContext('2d'); ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+        function deleteItem(id) {
+            history = history.filter(h => h.id !== id);
+            selectionOrder = selectionOrder.filter(sid => sid !== id);
+            localStorage.setItem('gps_history', JSON.stringify(history));
+            renderHistory();
+        }
+
+        document.getElementById('reset-btn').onclick = () => {
+            video.style.display = 'block'; freezeLayer.style.display = 'none';
+            document.getElementById('reset-btn').style.display = 'none';
+            document.getElementById('capture-btn').style.display = 'block';
+            statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---";
         };
 
-        document.getElementById('threshold-slider').oninput = () => {
-            document.getElementById('threshold-val').innerText = document.getElementById('threshold-slider').value == 128 ? "Auto" : document.getElementById('threshold-slider').value;
-            if (isFrozen) isGalleryMode ? runOcrOnSelection() : processImageAndOCR();
-        };
-
-        document.getElementById('zoom-slider').oninput = async () => {
-            const val = document.getElementById('zoom-slider').value; 
-            document.getElementById('zoom-val').innerText = val;
-            video.style.transform = `scale(${val})`;
-            if (videoTrack && videoTrack.getCapabilities().zoom) { try { await videoTrack.applyConstraints({ advanced: [{ zoom: val }] }); } catch (e) {} }
+        document.getElementById('zoom-slider').oninput = (e) => {
+            document.getElementById('zoom-val').innerText = e.target.value;
+            video.style.transform = `scale(${e.target.value})`;
         };
 
         window.onload = initCamera;
