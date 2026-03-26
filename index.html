@@ -24,6 +24,7 @@
         
         .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; }
         button { width: 100%; padding: 16px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; }
+        button:disabled { background: #444; color: #888; cursor: not-allowed; }
         #ocr-selection-btn { background: #28a745; display: none; }
         #reset-btn { background: #555; display: none; }
         
@@ -42,14 +43,18 @@
         #history-list { width: 100%; max-width: 400px; margin-top: 10px; }
         .history-item { display: flex; align-items: center; background: #222; margin-top: 5px; padding: 8px 12px; border-radius: 8px; font-size: 11px; gap: 10px; }
         .history-info { flex-grow: 1; display: flex; flex-direction: column; }
+        .history-checkbox { width: 18px; height: 18px; accent-color: #ed2127; }
         .delete-btn { color: #ed2127; cursor: pointer; font-size: 18px; padding: 2px 5px; }
+
+        #distance-tool { width: 100%; max-width: 400px; margin-top: 15px; padding: 15px; background: #1a1a1a; border-radius: 10px; box-sizing: border-box; text-align: center; border: 1px solid #ed212733; }
+        #distance-result { margin-top: 10px; font-weight: bold; color: #00ff00; font-size: 18px; }
     </style>
 </head>
 <body>
 
     <div class="app-header">
         <div class="app-title">GPS Location Finder</div>
-        <div class="app-version">v1.0.8-stable</div>
+        <div class="app-version">v1.1.0-stable</div>
     </div>
 
     <div id="viewer-container">
@@ -93,6 +98,11 @@
 
     <div id="history-list"></div>
 
+    <div id="distance-tool">
+        <button id="calc-dist-btn" disabled>VYPOČÍTAT VZDÁLENOST</button>
+        <div id="distance-result">--- m</div>
+    </div>
+
     <canvas id="raw-crop-canvas" style="display:none;"></canvas>
 
     <script>
@@ -100,13 +110,13 @@
         const rawCropCanvas = document.getElementById('raw-crop-canvas'), ocrCanvas = document.getElementById('ocr-canvas'), debugBox = document.getElementById('debug-box');
         const fileInput = document.getElementById('file-input'), captureBtn = document.getElementById('capture-btn'), fileBtn = document.getElementById('file-btn'), resetBtn = document.getElementById('reset-btn'), ocrSelectionBtn = document.getElementById('ocr-selection-btn');
         const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text'), mapBtnContainer = document.getElementById('map-button-container');
+        const calcDistBtn = document.getElementById('calc-dist-btn'), distanceResult = document.getElementById('distance-result');
 
         let videoTrack = null, isFrozen = false, isGalleryMode = false, isDrawing = false, sourceImg = null, startX, startY, selection = { x: 0, y: 0, w: 0, h: 0 };
         let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
         let lastLat = null, lastLon = null;
 
         async function initCamera() {
-            // Načtení preferované mapy
             const savedProvider = localStorage.getItem('map_provider') || 'mapycz';
             document.querySelector(`input[name="map-provider"][value="${savedProvider}"]`).checked = true;
 
@@ -117,13 +127,7 @@
             } catch (err) { statusDisp.innerText = "CHYBA KAMERY"; }
         }
 
-        function getMousePos(canvas, evt) {
-            const rect = canvas.getBoundingClientRect();
-            const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
-            const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
-            return { x: (clientX - rect.left) * (canvas.width / rect.width), y: (clientY - rect.top) * (canvas.height / rect.height) };
-        }
-
+        // --- OCR & Capture Logika ---
         fileBtn.onclick = () => fileInput.click();
         fileInput.onchange = (e) => {
             const file = e.target.files[0]; if (!file) return;
@@ -139,7 +143,6 @@
                     freezeLayer.getContext('2d').drawImage(img, 0, 0, freezeLayer.width, freezeLayer.height);
                     freezeLayer.style.display = 'block'; cropCanvas.style.display = 'block';
                     resetBtn.style.display = 'block'; captureBtn.style.display = 'none';
-                    statusDisp.innerText = "VYBERTE TEXT RÁMEČKEM";
                 };
                 img.src = ev.target.result;
             };
@@ -164,6 +167,13 @@
         cropCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); doDraw(e); }, {passive: false});
         window.addEventListener('mouseup', endDraw);
         cropCanvas.addEventListener('touchend', endDraw);
+
+        function getMousePos(canvas, evt) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+            const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+            return { x: (clientX - rect.left) * (canvas.width / rect.width), y: (clientY - rect.top) * (canvas.height / rect.height) };
+        }
 
         function runOcrOnSelection() {
             if (!sourceImg) return;
@@ -200,7 +210,6 @@
             let avgB = totalB / (d.length / 4);
             let thresholdSlider = document.getElementById('threshold-slider');
             let thresh = (thresholdSlider.value == 128) ? avgB : thresholdSlider.value;
-            if(thresholdSlider.value == 128) document.getElementById('threshold-val').innerText = "Auto (" + Math.round(avgB) + ")";
             for (let i = 0; i < d.length; i += 4) { let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > thresh) ? 255 : 0; d[i] = d[i+1] = d[i+2] = v; }
             ocrCtx.putImageData(imgData, 0, 0);
             try {
@@ -224,10 +233,7 @@
                 const simpleMatches = text.match(simpleRegex);
                 if (simpleMatches && simpleMatches.length >= 2) { fLat = simpleMatches[0].replace(',', '.'); fLon = simpleMatches[1].replace(',', '.'); }
             }
-            if (fLat && fLon) {
-                lastLat = fLat; lastLon = fLon;
-                displayResult(fLat, fLon, "✅ ZPRACOVÁNO");
-            }
+            if (fLat && fLon) { lastLat = fLat; lastLon = fLon; displayResult(fLat, fLon, "✅ ZPRACOVÁNO"); }
             else statusDisp.innerText = "❓ NEROZPOZNÁNO";
         }
 
@@ -245,13 +251,12 @@
             return { val: decimal.toFixed(6), type: type };
         }
 
+        // --- Mapy & Historie ---
         function generateMapUrl(lat, lon) {
             const provider = document.querySelector('input[name="map-provider"]:checked').value;
-            if (provider === "mapycz") {
-                return `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}`;
-            } else {
-                return `https://www.google.com/maps?q=${lat},${lon}`;
-            }
+            return provider === "mapycz" 
+                ? `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}`
+                : `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
         }
 
         function displayResult(lat, lon, msg) {
@@ -265,12 +270,10 @@
             mapBtnContainer.innerHTML = `<a href="${mapUrl}" target="_blank" class="map-link" onclick="saveToHistory('${lastLat}', '${lastLon}')">ZOBRAZIT BOD NA MAPĚ</a>`;
         }
 
-        // Globální změna poskytovatele map
         document.querySelectorAll('input[name="map-provider"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
                 localStorage.setItem('map_provider', e.target.value);
-                updateMapButton(); // Aktualizuje aktuální tlačítko
-                renderHistory();   // Aktualizuje odkazy v historii
+                updateMapButton(); renderHistory();
             });
         });
 
@@ -294,8 +297,9 @@
             list.innerHTML = history.length ? '<div style="font-size:10px; color:#666; margin:10px 0 5px 0">POSLEDNÍ SKENY (ULOŽENÉ):</div>' : '';
             history.forEach((h, index) => {
                 const item = document.createElement('div'); item.className = 'history-item';
-                const mapUrl = generateMapUrl(h.lat, h.lon); // Dynamické URL podle globálního nastavení
+                const mapUrl = generateMapUrl(h.lat, h.lon);
                 item.innerHTML = `
+                    <input type="checkbox" class="history-checkbox" data-index="${index}" onchange="toggleCalcButton()">
                     <div class="history-info">
                         <span style="font-weight:bold; color:#00ff00">${h.lat}, ${h.lon}</span>
                     </div>
@@ -304,7 +308,54 @@
                 `;
                 list.appendChild(item);
             });
+            toggleCalcButton();
         }
+
+        // --- Nástroj pro výpočet vzdálenosti ---
+        function toggleCalcButton() {
+            const checked = document.querySelectorAll('.history-checkbox:checked');
+            calcDistBtn.disabled = checked.length < 2;
+        }
+
+        function getHaversineDistance(coords1, coords2) {
+            const R = 6371e3; // Poloměr Země v metrech
+            const φ1 = coords1.lat * Math.PI/180;
+            const φ2 = coords2.lat * Math.PI/180;
+            const Δφ = (coords2.lat - coords1.lat) * Math.PI/180;
+            const Δλ = (coords2.lon - coords1.lon) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        calcDistBtn.onclick = () => {
+            const checkedBoxes = document.querySelectorAll('.history-checkbox:checked');
+            const selectedCoords = Array.from(checkedBoxes).map(cb => {
+                const h = history[cb.getAttribute('data-index')];
+                return { lat: parseFloat(h.lat), lon: parseFloat(h.lon) };
+            });
+
+            let maxDist = 0;
+            if (selectedCoords.length === 2) {
+                maxDist = getHaversineDistance(selectedCoords[0], selectedCoords[1]);
+            } else {
+                // Najít nejvzdálenější body mezi všemi vybranými
+                for (let i = 0; i < selectedCoords.length; i++) {
+                    for (let j = i + 1; j < selectedCoords.length; j++) {
+                        const d = getHaversineDistance(selectedCoords[i], selectedCoords[j]);
+                        if (d > maxDist) maxDist = d;
+                    }
+                }
+            }
+
+            const resultStr = maxDist > 1000 
+                ? (maxDist / 1000).toFixed(3) + " km" 
+                : Math.round(maxDist) + " m";
+            distanceResult.innerText = resultStr;
+        };
 
         resetBtn.onclick = () => {
             isFrozen = false; isGalleryMode = false; sourceImg = null; lastLat = null; lastLon = null;
@@ -314,11 +365,6 @@
             captureBtn.style.display = 'block'; statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---";
             mapBtnContainer.innerHTML = ""; document.getElementById('file-input').value = "";
             const ctx = cropCanvas.getContext('2d'); ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
-        };
-
-        document.getElementById('threshold-slider').oninput = () => {
-            document.getElementById('threshold-val').innerText = document.getElementById('threshold-slider').value == 128 ? "Auto" : document.getElementById('threshold-slider').value;
-            if (isFrozen) isGalleryMode ? runOcrOnSelection() : processImageAndOCR();
         };
 
         document.getElementById('zoom-slider').oninput = async () => {
