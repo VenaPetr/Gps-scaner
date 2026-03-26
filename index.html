@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Location Finder v2.2</title>
+    <title>GPS Finder v2.3 - Fix ^</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
@@ -40,8 +40,8 @@
 <body>
 
     <div class="app-header">
-        <div class="app-title">GPS Finder v2.2</div>
-        <div class="app-version">v2.2-stable</div>
+        <div class="app-title">GPS Finder (Fix ^)</div>
+        <div class="app-version">v2.3-stable</div>
     </div>
 
     <div id="viewer-container">
@@ -190,16 +190,20 @@
             for (let i = 0; i < d.length; i += 4) { let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > thresh) ? 255 : 0; d[i] = d[i+1] = d[i+2] = v; }
             ocrCtx.putImageData(imgData, 0, 0);
             try {
+                // OPRAVA 1: Whitelist nyní obsahuje ^
                 const result = await Tesseract.recognize(ocrCanvas, 'eng', { tessedit_char_whitelist: '0123456789.,°^"\'NSEWnsewVZvz ' });
-                // KLÍČOVÁ ZMĚNA: Nahrazení ^ za ° okamžitě po OCR
+                
+                // OPRAVA 2: Okamžitá náhrada ^ za ° pro čisté zpracování
                 let text = result.data.text.trim().replace(/\^/g, '°');
+                
                 outputText.innerText = text || "Nenalezen text";
                 parseCoordinates(text);
             } catch (e) { statusDisp.innerText = "CHYBA OCR"; }
         }
 
         function parseCoordinates(text) {
-            const coordRegex = /([NSNSEWnsewVZvz]?\s*\d{1,3}[°\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[NSNSEWnsewVZvz]?)/gi;
+            // OPRAVA 3: Regex nyní počítá se stříškou jako s oddělovačem
+            const coordRegex = /([NSNSEWnsewVZvz]?\s*\d{1,3}[°\^\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[NSNSEWnsewVZvz]?)/gi;
             const matches = text.match(coordRegex);
             let fLat, fLon;
             if (matches && matches.length >= 2) {
@@ -213,6 +217,8 @@
         }
 
         function convertToDecimal(s) {
+            // Pojistka pro výpočetní funkci
+            s = s.replace(/\^/g, '°');
             const n = s.match(/(\d+(\.\d+)?)/g); if (!n) return { val: null, type: 'unknown' };
             let d = parseFloat(n[0]) + (n[1]?n[1]/60:0) + (n[2]?n[2]/3600:0);
             if (/[SWswZz]/.test(s)) d = -d;
@@ -222,7 +228,7 @@
         function updateMapButton() {
             if (!lastLat || !lastLon) return;
             const p = document.querySelector('input[name="map-provider"]:checked').value;
-            const url = p === "mapycz" ? `https://mapy.cz/zakladni?x=${lastLon}&y=${lastLat}&z=16&source=coor&id=${lastLon}%2C${lastLat}` : `https://www.google.com/maps?q=${lastLat},${lastLon}`;
+            const url = p === "mapycz" ? `https://mapy.cz/zakladni?x=${lastLon}&y=${lastLat}&z=16&source=coor&id=${lastLon}%2C${lastLat}` : `https://www.google.com/maps/search/?api=1&query=${lastLat},${lastLon}`;
             mapBtnContainer.innerHTML = `<a href="${url}" target="_blank" class="map-link" onclick="saveToHistory('${lastLat}', '${lastLon}')">OTEVŘÍT MAPU</a>`;
         }
 
