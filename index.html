@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS Finder v2.3 - Fix ^</title>
+    <title>GPS Finder v2.4 - Manual Edit</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; margin: 0; padding: 10px; touch-action: pan-y; }
@@ -20,11 +20,18 @@
         .controls { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; }
         button { width: 100%; padding: 16px; font-size: 15px; cursor: pointer; border: none; border-radius: 10px; background: #ed2127; color: white; font-weight: bold; }
         button:disabled { background: #444 !important; color: #888 !important; cursor: not-allowed; border: 1px solid #333; }
+        .secondary-btn { background: #444; }
         #reset-btn { background: #555; display: none; }
         .debug-container { margin-top: 10px; padding: 10px; background: #000; border: 1px dashed #444; border-radius: 8px; width: 100%; max-width: 400px; box-sizing: border-box; display: none; }
         #ocr-canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid #00ff00; }
         #result { margin-top: 10px; padding: 12px; background: #111; border-radius: 10px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #333; box-sizing: border-box; }
-        #output-text { font-size: 15px; color: #00ff00; margin: 8px 0; font-family: monospace; word-break: break-all; background: #000; padding: 5px; min-height: 20px; }
+        
+        /* Editovatelné pole */
+        #output-text { font-size: 16px; color: #00ff00; margin: 8px 0; font-family: monospace; word-break: break-all; background: #000; padding: 10px; min-height: 25px; border: 1px solid #444; border-radius: 5px; outline: none; }
+        #output-text:focus { border-color: #ed2127; background: #111; }
+        
+        #recalc-btn { background: #2e7d32; font-size: 12px; padding: 8px; margin-bottom: 10px; display: none; width: 100%; }
+        
         .map-selector { display: flex; justify-content: center; gap: 15px; margin: 10px 0; padding: 8px; background: #1a1a1a; border-radius: 8px; }
         .map-selector label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: #aaa; margin-bottom: 0; font-weight: bold; }
         .map-link { display: block; padding: 14px; background: #4a90e2; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 5px; }
@@ -40,8 +47,8 @@
 <body>
 
     <div class="app-header">
-        <div class="app-title">GPS Finder (Fix ^)</div>
-        <div class="app-version">v2.3-stable</div>
+        <div class="app-title">GPS Finder v2.4</div>
+        <div class="app-version">v2.4-edit</div>
     </div>
 
     <div id="viewer-container">
@@ -60,21 +67,21 @@
     <div class="controls">
         <button id="camera-btn">📸 POŘÍDIT FOTO</button>
         <input type="file" id="camera-input" accept="image/*" capture="environment" style="display: none;">
-        
-        <button id="file-btn" style="background:#444">📂 VYBRAT Z GALERIE</button>
+        <button id="file-btn" class="secondary-btn">📂 GALERIE</button>
         <input type="file" id="file-input" accept="image/*" style="display: none;">
-
         <button id="reset-btn">🔄 NOVÝ SNÍMEK</button>
     </div>
 
     <div id="debug-box" class="debug-container">
-        <label style="color: #00ff00; font-size: 9px; margin-bottom: 3px; display: block;">BINÁRNÍ VÝŘEZ PRO OCR:</label>
         <canvas id="ocr-canvas"></canvas>
     </div>
 
     <div id="result">
-        <div id="status" style="font-size: 12px; color: #888;">PŘIPRAVENO</div>
-        <div id="output-text">---</div>
+        <div id="status" style="font-size: 11px; color: #888;">PŘIPRAVENO</div>
+        
+        <div id="output-text" contenteditable="true" spellcheck="false">---</div>
+        <button id="recalc-btn">PŘEPOČÍTAT UPRAVENÝ TEXT</button>
+
         <div class="map-selector">
             <label><input type="radio" name="map-provider" value="mapycz" checked> Mapy.cz</label>
             <label><input type="radio" name="map-provider" value="google"> Google Maps</label>
@@ -87,7 +94,7 @@
     <div id="distance-tool">
         <div class="tool-buttons">
             <button id="calc-dist-btn" disabled>VZDÁLENOST</button>
-            <button id="route-btn" disabled style="background:#34a853">TRASA (G)</button>
+            <button id="route-btn" disabled style="background:#34a853">TRASA</button>
         </div>
         <div id="distance-result">---</div>
     </div>
@@ -98,20 +105,19 @@
         const video = document.getElementById('video'), freezeLayer = document.getElementById('freeze-layer'), cropCanvas = document.getElementById('crop-canvas');
         const rawCropCanvas = document.getElementById('raw-crop-canvas'), ocrCanvas = document.getElementById('ocr-canvas'), debugBox = document.getElementById('debug-box');
         const fileInput = document.getElementById('file-input'), cameraInput = document.getElementById('camera-input');
-        const fileBtn = document.getElementById('file-btn'), cameraBtn = document.getElementById('camera-btn'), resetBtn = document.getElementById('reset-btn');
+        const fileBtn = document.getElementById('file-btn'), cameraBtn = document.getElementById('camera-btn'), resetBtn = document.getElementById('reset-btn'), recalcBtn = document.getElementById('recalc-btn');
         const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text'), mapBtnContainer = document.getElementById('map-button-container');
         const calcDistBtn = document.getElementById('calc-dist-btn'), routeBtn = document.getElementById('route-btn'), distanceResult = document.getElementById('distance-result');
         const thresholdSlider = document.getElementById('threshold-slider'), thresholdVal = document.getElementById('threshold-val');
 
-        let videoTrack = null, isFrozen = false, isDrawing = false, sourceImg = null, startX, startY, selection = { x: 0, y: 0, w: 0, h: 0 };
+        let isFrozen = false, isDrawing = false, sourceImg = null, startX, startY, selection = { x: 0, y: 0, w: 0, h: 0 };
         let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
         let lastLat = null, lastLon = null;
 
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } });
-                video.srcObject = stream; videoTrack = stream.getVideoTracks()[0];
-                applyZoom(); renderHistory();
+                video.srcObject = stream; applyZoom(); renderHistory();
             } catch (err) { statusDisp.innerText = "NÁHLED KAMERY NEDOSTUPNÝ"; }
         }
 
@@ -185,25 +191,32 @@
             for (let i = 0; i < d.length; i += 4) totalB += (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11);
             let avgB = totalB / (d.length / 4);
             let thresh = (thresholdSlider.value == 128) ? avgB : thresholdSlider.value;
-            thresholdVal.innerText = (thresholdSlider.value == 128) ? `Auto (${Math.round(avgB)})` : thresholdSlider.value;
-
             for (let i = 0; i < d.length; i += 4) { let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > thresh) ? 255 : 0; d[i] = d[i+1] = d[i+2] = v; }
             ocrCtx.putImageData(imgData, 0, 0);
+
             try {
-                // OPRAVA 1: Whitelist nyní obsahuje ^
                 const result = await Tesseract.recognize(ocrCanvas, 'eng', { tessedit_char_whitelist: '0123456789.,°^"\'NSEWnsewVZvz ' });
+                let text = result.data.text.trim();
                 
-                // OPRAVA 2: Okamžitá náhrada ^ za ° pro čisté zpracování
-                let text = result.data.text.trim().replace(/\^/g, '°');
+                // AUTOMATICKÁ OPRAVA SYMBOLŮ PŘED ZOBRAZENÍM
+                // Nahradí ^ nebo 7 uprostřed souřadnice symbolem stupně
+                text = text.replace(/(\d+)\^/g, '$1°').replace(/(\d+)7/g, '$1°');
                 
                 outputText.innerText = text || "Nenalezen text";
+                recalcBtn.style.display = 'block'; // Zobrazit tlačítko pro opravu
                 parseCoordinates(text);
             } catch (e) { statusDisp.innerText = "CHYBA OCR"; }
         }
 
+        // Funkce vyvolaná tlačítkem "PŘEPOČÍTAT"
+        recalcBtn.onclick = () => {
+            const editedText = outputText.innerText;
+            parseCoordinates(editedText);
+        };
+
         function parseCoordinates(text) {
-            // OPRAVA 3: Regex nyní počítá se stříškou jako s oddělovačem
-            const coordRegex = /([NSNSEWnsewVZvz]?\s*\d{1,3}[°\^\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[NSNSEWnsewVZvz]?)/gi;
+            // Regex bere v potaz i ^ nebo 7, pokud by tam zbyly
+            const coordRegex = /([NSNSEWnsewVZvz]?\s*\d{1,3}[°\^7\s]+\d{1,2}[.\d]*['\s]*[\d.]*["\s]*[NSNSEWnsewVZvz]?)/gi;
             const matches = text.match(coordRegex);
             let fLat, fLon;
             if (matches && matches.length >= 2) {
@@ -213,12 +226,12 @@
                 const simpleMatches = text.match(/([0-9]{2,3}[.,][0-9]{3,})/g);
                 if (simpleMatches && simpleMatches.length >= 2) { fLat = simpleMatches[0].replace(',', '.'); fLon = simpleMatches[1].replace(',', '.'); }
             }
-            if (fLat && fLon) { lastLat = fLat; lastLon = fLon; statusDisp.innerText = "✅ OK"; updateMapButton(); } else statusDisp.innerText = "❓ NEROZPOZNÁNO";
+            if (fLat && fLon) { lastLat = fLat; lastLon = fLon; statusDisp.innerText = "✅ OK (Můžeš upravit text výše)"; updateMapButton(); } 
+            else statusDisp.innerText = "❓ CHYBA FORMÁTU - OPRAV RUČNĚ";
         }
 
         function convertToDecimal(s) {
-            // Pojistka pro výpočetní funkci
-            s = s.replace(/\^/g, '°');
+            s = s.replace(/[\^7]/g, '°'); // Vyčistit pro výpočet
             const n = s.match(/(\d+(\.\d+)?)/g); if (!n) return { val: null, type: 'unknown' };
             let d = parseFloat(n[0]) + (n[1]?n[1]/60:0) + (n[2]?n[2]/3600:0);
             if (/[SWswZz]/.test(s)) d = -d;
@@ -265,9 +278,8 @@
         };
 
         routeBtn.onclick = () => {
-            const boxes = document.querySelectorAll('.history-checkbox:checked');
-            const pts = Array.from(boxes).map(cb => history[cb.dataset.index]);
-            window.open(`https://www.google.com/maps/dir/${pts[0].lat},${pts[0].lon}/${pts[pts.length-1].lat},${pts[pts.length-1].lon}`, '_blank');
+            const pts = Array.from(document.querySelectorAll('.history-checkbox:checked')).map(cb => history[cb.dataset.index]);
+            window.open(`https://www.google.com/maps/dir/${pts[0].lat},${pts[0].lon}/${pts[1].lat},${pts[1].lon}`, '_blank');
         };
 
         function applyZoom() {
@@ -279,7 +291,7 @@
         resetBtn.onclick = () => {
             isFrozen = false; sourceImg = null;
             video.style.display = 'block'; freezeLayer.style.display = 'none'; cropCanvas.style.display = 'none';
-            resetBtn.style.display = 'none'; debugBox.style.display = 'none';
+            resetBtn.style.display = 'none'; debugBox.style.display = 'none'; recalcBtn.style.display = 'none';
             cameraBtn.style.display = 'block'; fileBtn.style.display = 'block';
             statusDisp.innerText = "PŘIPRAVENO"; outputText.innerText = "---";
             mapBtnContainer.innerHTML = "";
