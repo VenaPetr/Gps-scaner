@@ -57,7 +57,7 @@
 
     <div class="app-header">
         <div class="app-title">GPS Location Finder</div>
-        <div class="app-version">v1.1.5-stable</div>
+        <div class="app-version">v1.1.6-stable</div>
     </div>
 
     <div id="viewer-container">
@@ -123,6 +123,7 @@
         const resetBtn = document.getElementById('reset-btn'), ocrSelectionBtn = document.getElementById('ocr-selection-btn');
         const statusDisp = document.getElementById('status'), outputText = document.getElementById('output-text'), mapBtnContainer = document.getElementById('map-button-container');
         const calcDistBtn = document.getElementById('calc-dist-btn'), routeBtn = document.getElementById('route-btn'), distanceResult = document.getElementById('distance-result');
+        const thresholdSlider = document.getElementById('threshold-slider'), thresholdVal = document.getElementById('threshold-val');
 
         let videoTrack = null, isFrozen = false, isGalleryMode = false, isDrawing = false, sourceImg = null, startX, startY, selection = { x: 0, y: 0, w: 0, h: 0 };
         let history = JSON.parse(localStorage.getItem('gps_history') || '[]');
@@ -138,7 +139,6 @@
             } catch (err) { statusDisp.innerText = "CHYBA KAMERY"; }
         }
 
-        // --- Společná logika pro nahrání souboru (Galerie i Fotoaparát) ---
         function handleImageUpload(e) {
             const file = e.target.files[0]; if (!file) return;
             const reader = new FileReader();
@@ -165,7 +165,6 @@
         fileInput.onchange = handleImageUpload;
         cameraInput.onchange = handleImageUpload;
 
-        // --- Ostatní logika (OCR, Mapy, Výpočty) zůstává stejná ---
         const startDraw = (e) => { if(!isGalleryMode) return; isDrawing = true; const p = getMousePos(cropCanvas, e); startX = p.x; startY = p.y; };
         const doDraw = (e) => {
             if (!isDrawing) return;
@@ -225,8 +224,10 @@
             let d = imgData.data, totalB = 0;
             for (let i = 0; i < d.length; i += 4) totalB += (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11);
             let avgB = totalB / (d.length / 4);
-            let thresholdSlider = document.getElementById('threshold-slider');
             let thresh = (thresholdSlider.value == 128) ? avgB : thresholdSlider.value;
+            
+            thresholdVal.innerText = (thresholdSlider.value == 128) ? `Auto (${Math.round(avgB)})` : thresholdSlider.value;
+
             for (let i = 0; i < d.length; i += 4) { let v = (d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11 > thresh) ? 255 : 0; d[i] = d[i+1] = d[i+2] = v; }
             ocrCtx.putImageData(imgData, 0, 0);
             try {
@@ -272,7 +273,7 @@
             const provider = document.querySelector('input[name="map-provider"]:checked').value;
             return provider === "mapycz" 
                 ? `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}`
-                : `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+                : `https://www.google.com/maps?q=lat,lon{lat},${lon}`;
         }
 
         function displayResult(lat, lon, msg) {
@@ -367,7 +368,7 @@
             });
             if (points.length < 2) return;
             const origin = points[0], destination = points[points.length - 1], waypoints = points.slice(1, -1).join('|');
-            let url = `http://googleusercontent.com/maps.google.com/4{origin}&destination=${destination}`;
+            let url = `https://www.google.com/maps?q=${origin}&destination=${destination}`;
             if (waypoints) url += `&waypoints=${waypoints}`;
             window.open(url, '_blank');
         };
@@ -384,11 +385,22 @@
             const ctx = cropCanvas.getContext('2d'); ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
         };
 
+        // --- Opravené ovládání sliderů ---
+        thresholdSlider.oninput = () => {
+            if (isFrozen) {
+                isGalleryMode ? runOcrOnSelection() : processImageAndOCR();
+            } else {
+                thresholdVal.innerText = (thresholdSlider.value == 128) ? "Auto" : thresholdSlider.value;
+            }
+        };
+
         document.getElementById('zoom-slider').oninput = async () => {
             const val = document.getElementById('zoom-slider').value; 
             document.getElementById('zoom-val').innerText = val;
             video.style.transform = `scale(${val})`;
-            if (videoTrack && videoTrack.getCapabilities().zoom) { try { await videoTrack.applyConstraints({ advanced: [{ zoom: val }] }); } catch (e) {} }
+            if (videoTrack && videoTrack.getCapabilities().zoom) { 
+                try { await videoTrack.applyConstraints({ advanced: [{ zoom: val }] }); } catch (e) {} 
+            }
         };
 
         window.onload = initCamera;
