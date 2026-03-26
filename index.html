@@ -57,7 +57,7 @@
 
     <div class="app-header">
         <div class="app-title">GPS Location Finder</div>
-        <div class="app-version">v1.1.6-stable</div>
+        <div class="app-version">v1.1.7-stable</div>
     </div>
 
     <div id="viewer-container">
@@ -269,11 +269,14 @@
             return { val: decimal.toFixed(6), type: type };
         }
 
+        // --- OPRAVENÉ URL GENERÁTORY ---
         function generateMapUrl(lat, lon) {
             const provider = document.querySelector('input[name="map-provider"]:checked').value;
-            return provider === "mapycz" 
-                ? `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}`
-                : `https://www.google.com/maps?q=lat,lon{lat},${lon}`;
+            if (provider === "mapycz") {
+                return `https://mapy.cz/zakladni?x=${lon}&y=${lat}&z=16&source=coor&id=${lon}%2C${lat}`;
+            } else {
+                return `https://www.google.com/maps?q=${lat},${lon}`;
+            }
         }
 
         function displayResult(lat, lon, msg) {
@@ -367,9 +370,15 @@
                 return `${h.lat},${h.lon}`;
             });
             if (points.length < 2) return;
-            const origin = points[0], destination = points[points.length - 1], waypoints = points.slice(1, -1).join('|');
-            let url = `https://www.google.com/maps?q=${origin}&destination=${destination}`;
+            
+            const origin = points[0];
+            const destination = points[points.length - 1];
+            const waypoints = points.slice(1, -1).join('|');
+            
+            // Správné Google Directions API URL
+            let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
             if (waypoints) url += `&waypoints=${waypoints}`;
+            
             window.open(url, '_blank');
         };
 
@@ -385,7 +394,6 @@
             const ctx = cropCanvas.getContext('2d'); ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
         };
 
-        // --- Opravené ovládání sliderů ---
         thresholdSlider.oninput = () => {
             if (isFrozen) {
                 isGalleryMode ? runOcrOnSelection() : processImageAndOCR();
